@@ -18,7 +18,7 @@
 
 =cut
 
-use 5.012;
+#use 5.012;
 use strict;
 use utf8;
 #use autodie;
@@ -27,10 +27,10 @@ use warnings	qw< FATAL utf8 >;
 no warnings	qw< uninitialized >;
 use open	qw< :std :utf8 >;
 #use charnames	qw< :full >;
-use feature	qw< unicode_strings >;
+#use feature	qw< unicode_strings >;
 
 #use Encode		qw< encode decode >;
-use Unicode::Normalize	qw< NFD NFC >;
+#use Unicode::Normalize	qw< NFD NFC >;
 use Carp		qw< carp croak confess cluck >;
 use File::Basename	qw< basename >;
 use Getopt::Long;
@@ -121,8 +121,9 @@ my ($CA_CRT) = "$CA_DIR/ca.crt";
 my ($CA_CRL) = "$CA_DIR/ca.crl";
 my ($CA_INFO) = "$CA_DIR/.cainfo";
 my ($TMPCONF) = "$CA_DIR/tmp/ssl.conf";
-my ($StartDate) = strftime("%Y%m%d%H%M%SZ", gmtime(time - 86400));
 my ($TMP_SERIAL) = "$CA_DIR/tmp/tmp-serial";
+
+my ($StartDate) = strftime("%Y%m%d%H%M%SZ", gmtime(time - 86400));
 
 
 
@@ -637,11 +638,12 @@ sub genca($$$$$$$$$)
   openssl("pkcs12 -nokeys -password pass:mypass -export -out '$ARCHIVE_DIR/ca.p12' -in '$CA_CRT'");
   openssl("x509 -in '$CA_CRT' -out '$ARCHIVE_DIR/ca.der' -outform DER");
   openssl("x509 -in '$CA_CRT' -out '$ARCHIVE_DIR/ca.pem' -outform PEM");
-  run("keytool -import -storepass mypass -alias cacert -noprompt -trustcacerts -keystore '$ARCHIVE_DIR/ca.jks' -file '$ARCHIVE_DIR/ca.der'");
+  run("keytool -import -storepass mypass -alias cacert -noprompt -trustcacerts -keystore '$ARCHIVE_DIR/ca.jks' -file '$ARCHIVE_DIR/ca.der'",1);
 }
 
 
 
+# Support version display
 if ($OPTIONS{'version'})
 {
   my $version = "{UNTAGGED}";
@@ -674,6 +676,13 @@ if ($OPTIONS{'version'})
   exit(0);
 }
 
+
+# Older versions of OpenSSL do not support four digit years
+my ($opensslversion) = openssl("version");
+if ($opensslversion =~ /\b0\.9\.[^9]/)
+{
+  ($StartDate) = strftime("%y%m%d%H%M%SZ", gmtime(time - 86400));
+}
 
 
 ##################################################
