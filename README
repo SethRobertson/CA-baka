@@ -1,0 +1,325 @@
+NAME
+    CA-baka - Simple X509 Certificate Authority/Generation Script
+
+    The sysadmin's and network security developer's best friend.
+
+SYNOPSIS
+    CA-baka [--workdir directory] [--country|--C country] [--state|--ST
+    state] [--locality|--L city] [--organization|--O company]
+    [--organizationalunit|--OU department] [--days number] [--keylen bitlen]
+    [--newca CN Email] [--subca CN Email NewWorkDir] [--newserver CN
+    [Email]] [--newclient CN [Email]] [--newmail CN [Email]] [--altnames
+    TYPE:value]... [--revoke CN] [--renew] [--verify filename] [--verbose]+
+    [-v]+ [--quiet]
+
+DESCRIPTION
+    This Certificate Authority is designed for use by a skilled, trusted
+    human who is generating full cryptographic packages for clients,
+    servers, or peoples to blindly install without thought, without having
+    to modify any configuration files or do special things with your shell
+    before running commands, or the like. The very model of a centralized CA
+    dictatorship (I'll just keep those keys for backup purposes in case you
+    happen to lose them, I won't use them to decrypt your future traffic, or
+    forge your signatures, honest!).
+
+    Everyone and their dog seems to have a certificate authority/generation
+    script, but all of the ones I have seen so far, frankly, suck donkey
+    balls for usability, documentation, and sanity. The most common ones
+    "Easy CA" and the rather anonymously named "CA" used by RHEL, are
+    particularly annoying. This one does what I have wanted to do each and
+    every time I have wanted to generate certificates, simply and cleanly.
+
+    All of the most common certificate authority needs are provided: initial
+    master certificate authority key/crt generation, subsidiary certificate
+    authority key/crt generation, server key/crt generation, client key/crt
+    generation, email key/crt generation, and certificate revocation.
+
+    There is limited ability to modify the most popular information,
+    including X509 subject identifier material, validity length, and key
+    length. Defaults are available for all values (except for X509 subject
+    identifier material during the initial setup of the master certificate
+    authority).
+
+    The first invocation of CA-baka (per --workdir) requires that you use
+    "--newca" with "--country", "--state", "--locality", and
+    "--organization" set to properly initialize the certificate authority.
+    Afterwards (or indeed at the same time as the "--newca" invocation, you
+    can issue other certificates using one or more of "--subca",
+    "--newserver", "--newclient", "--newmail" or revoke other certificates
+    using "--revoke". Other arguments modify the behavior of the system.
+
+OPTIONS
+    The options control everything, and the script is not going to do
+    anything (except perhaps error out depending on configuration) if you do
+    not provide arguments.
+
+    --workdir *directory*
+        Set the certificate authority working directory. If this is not
+        specified, the directory ../etc/CA relative to the location of the
+        "CA-baka" program will be used. When first configuring the system
+        "--newca" the working directory must not exist.
+
+    --country|C *countrycode*
+        Set the X509 C country code. This is required when using "--newca".
+        Other executions, it may be specified or the value from the
+        "--newca" call will be used. You may use quotes to send
+        empty/complex/multiword identifiers.
+
+    --state|ST *state*
+        Set the X509 ST state. This is required when using "--newca". Other
+        executions, it may be specified or the value from the "--newca" call
+        will be used. You may use quotes to send empty/complex/multiword
+        identifiers.
+
+    --locality|L *city*
+        Set the X509 L locality, typically the city name. This is required
+        when using "--newca". Other executions, it may be specified or the
+        value from the "--newca" call will be used. You may use quotes to
+        send empty/complex/multiword identifiers.
+
+    --organization|O *company*
+        Set the X509 O organization, typically the company name. This is
+        required when using "--newca". Other executions, it may be specified
+        or the value from the "--newca" call will be used. You may use
+        quotes to send empty/complex/multiword identifiers.
+
+    --organizationalunit|OU *department*
+        Set the X509 OU organizational unit, typically the department name.
+        This is also optional. Non-initial executions, it may be specified
+        or the (possibly empty) value from the "--newca" call will be used.
+        You may use quotes to send empty/complex/multiword identifiers.
+
+    --newca *CN Email*
+        Request that the initial certificate authority be set up with the
+        indicated common name and email address. You may use quotes to send
+        empty/complex/multiword identifiers.
+
+        The generated certificate, key, and various alternate forms of that
+        data will be available in the work directory's archive subdirectory,
+        in a further subdirectory named by the CN. Distribution of this
+        material is left as an exercise to the reader.
+
+    --subca *CN Email NewWorkDirectory*
+        Request that a subsidiary certificate authority be set up with the
+        indicated common name and email address, in the new work directory
+        specified. This is much like creating an entirely distinct
+        certificate authority with "--newca" except: (1) the certificate is
+        signed by the parent certificate, (2) you cannot create lower level
+        subsidiary certificates authorities, (3) the X509 subject identifier
+        material is defaulted from the "--newca" call (but of course may be
+        overridden on this execution, the values in play at the time of
+        "--subca" will be the new defaults for the "--subca"'s work
+        directory. You may use quotes to send empty/complex/multiword
+        identifiers.
+
+        The generated certificate, key, and various alternate forms of that
+        data will be available in the work directory's archive subdirectory,
+        in a further subdirectory named by the CN. Distribution of this
+        material is left as an exercise to the reader.
+
+    --newserver *CN [Email]*
+        Request that a server certificate be generated with the indicated
+        common name and the optional email address. You may use quotes to
+        send empty/complex/multiword identifiers (and if you have other
+        command line options after this one, you must specify an email
+        address, though it may be empty.
+
+        The generated certificate, key, and various alternate forms of that
+        data will be available in the work directory's archive subdirectory,
+        in a further subdirectory named by the CN. Distribution of this
+        material is left as an exercise to the reader.
+
+    --newclient *CN [Email]*
+        Request that a client certificate be generated with the indicated
+        common name and the optional email address. You may use quotes to
+        send empty/complex/multiword identifiers (and if you have other
+        command line options after this one, you must specify an email
+        address, though it may be empty.
+
+        The generated certificate, key, and various alternate forms of that
+        data will be available in the work directory's archive subdirectory,
+        in a further subdirectory named by the CN. Distribution of this
+        material is left as an exercise to the reader.
+
+    --newmail *CN [Email]*
+        Request that a user mail certificate be generated with the indicated
+        common name and the optional(recommended) email address. You may use
+        quotes to send empty/complex/multiword identifiers (and if you have
+        other command line options after this one, you must specify an email
+        address, though it may be empty.
+
+        The generated certificate, key, and various alternate forms of that
+        data will be available in the work directory's archive subdirectory,
+        in a further subdirectory named by the CN. Distribution of this
+        material is left as an exercise to the reader.
+
+    --altname *TYPE:value*
+        Request that the certificate being generated on this execution be
+        given the listed subject alternate name (SAN). You may only generate
+        one certificate per execution if you have "--altname" specified.
+        This can be used to provide, eg, alternate hostnames for HTTPS
+        server certificates (for multisite hosted domains) or alternate
+        email address for mail certificates.
+
+        Valid TYPEs are "email", "URI", "DNS", and "IP". Typically "DNS" and
+        "IP" are used for server certificates, and "email" is used for mail
+        certificates.
+
+        When using "--altname" you must specify the data (CN, email) you
+        might have expected to be authories as part of the primary subject
+        name as an alternate. So if you set the CN to host1.example.com, you
+        must also provide DNS:host1.example.com as an SAN).
+
+        You must specify this argument multiple times, one per SAN you are
+        attempting provide.
+
+    --revoke *CN*
+        Specify a desire to revoke a currently valid certificate. The
+        existing certificate directory will be moved away to an alternate
+        name and the certificate revocation list (CRL) will be regenerated.
+        Distribution of said CRL is left as an exercise to the reader.
+
+    --days *number*
+        Override the default number of days a certificate will be valid for.
+        By default certificates are valid for 365 days. Note that the start
+        date of the certificate will be yesterday, to allow for poorly set
+        clocks.
+
+    --keylen *bitlen*
+        Override the default key length of a certificate. The default key
+        length is 2048 bits.
+
+    --renew
+        Normally you are forbidden to generate a certificate for a CN you
+        have generated a certificate for previously. However, as a special
+        case, you may pass in the --renew option which will cause the
+        existing certificate to be revoked, so that a fresh certificate can
+        be generated.
+
+    --verify *filename|CN*
+        Attempt to verify a certificate given a file to the certificate or
+        the CN of the certificate (the latter using the saved certificate
+        material). The CRL is checked to verify whether the certificate was
+        revoked or not. The purposes the certificates are valid for are
+        displayed.
+
+    --version
+        Print the version of this program.
+
+    --verbose|v
+        Print more information when generating certificates.
+
+    --quiet
+        Print less information when generating certificates.
+
+EXAMPLES
+    A typical usage goes something like:
+
+      # Create certificate authority
+      CA-baka --workdir /etc/CA -C US --ST NY -L "New York" -O "Mythical NY Company" --newca ca.example.com ""
+
+      # Create web server certificate
+      CA-baka --workdir /etc/CA --newserver www.example.com webmaster@example.com
+
+      # Create mail certificate plus all common aliases
+      CA-baka --workdir /etc/CA --newserver mail.example.com postmaster@example.com --altname DNS:mail.example.com --altname DNS:pop.example.com --altname DNS:imap.example.com --altname:smtp.example.com
+
+      # Create VPN server certificate
+      CA-baka --workdir /etc/CA --newserver vpn.example.com ""
+
+      # Create specific user certificate for VPN
+      CA-baka --workdir /etc/CA --OU VPN --newclient "Joe Luser" joe@example.com
+      CA-baka --workdir /etc/CA --OU VPN --newclient "Bob 6pack" bob@example.com
+      CA-baka --workdir /etc/CA --OU VPN --newclient "Martha Stewardess" mstew@example.com
+
+      # Revoke bad certificate
+      CA-baka --workdir /etc/CA --OU VPN --revoke "Martha Stewardess"
+
+FILES/DIRECTORIES
+    Within the workdirectory, you will see
+
+    ca.crl Certificate revocation list
+    ca.crt Certificate Authority Certificate
+    ca.key Certificate Authority Key
+    archive/ Archive of all files generated
+    tmp/ Junk used in the production of certificates
+    trusted-certs/ Directory of trusted certificates ala "CApath" for
+    verification purposes.
+
+    Under "archive" you will have a bunch of directories, one per common
+    name. Under those directories you will see files like "ca.crt"
+    "server.crt" "client.crt" "mail.crt" or "subca.crt" for the various
+    forms of certificates, plus ".key" variants of these files which contain
+    the private key. There will typically also be several other files with
+    names like ".der" ".jks" ".p12" and ".pem" which provide variants of
+    these same certificates or keys and certificates. If you need those
+    variants, feel free to take them. The ".p12" has a required password,
+    which is "mypass".
+
+BUGS
+    This Certificate Authority is designed for use by a skilled, trusted
+    human who is generating or validating the inputs to the script. The
+    remaining items are specific instances of this.
+
+  Separation of key/csr generation from crt signing
+    The key and csr is generated by the CA-baka instants before the signed
+    crt is generated. There is no prevision to accept CSRs from the outside
+    world and sign them. This probably wouldn't be too difficult.
+
+  CRL
+    The CRL is not a rotating window of short-lived valid CRLs, and there is
+    not particular method to attempt to publish the CRL when it is
+    generated. The CRLs are generally valid as long (or longer!!) as the
+    certificates which it purports to revoke, and this means attacks trying
+    to prevent a client from ever getting an updated CRL might be very
+    successful.
+
+  Unsanitized input
+    The script does not attempt to deal with "IDN Homograph Attacks" or "CN
+    attacks against system tools". For example, the system uses a Cyrillic
+    "а" (← I typed the right character which looks identical to an "a". Your
+    processing may vary.) instead of an ASCII "a", well that is just too
+    bad. Likewise, you might experience problems if the user attempts to use
+    a CN which contains ";" or "&" or "$" or perhaps certain characters
+    which attack the terminal by stuffing characters if you `ls` the wrong
+    directory.
+
+    The system does attempt to do some sanitization, specifically forbidding
+    "'" or ^A-^Z control characters, and passing CN around in single quotes.
+    It has not been carefully audited to be free from defects.
+
+  Key Encryption
+    Basically none of the keys or other files generated have encrypted keys,
+    except in cases where the format/tool (I'm looking at you pkcs12) forces
+    a key. Even then the key is static and stupid ("mypass").
+
+  Ability to generate multipurpose certificates
+    You cannot generate a certificate for being both an SSL server and a SSL
+    client.
+
+  Ability to generate multiple certificates per CA
+    Even though would be no filename conflict (so this could be added) you
+    cannot generate a server certificate for CN:hosta.example.com and a
+    client certificate for the same CN.
+
+  Other CA best practices
+    Most likely there are other best practices by CAs which are not being
+    followed.
+
+COPYRIGHT
+    Copyright ⓒ 2012 BAKA - See LICENSE.TXT
+
+    If you think of it as a GPL2 without the ability to upgrade or the
+    linkage restriction, you will not go far wrong.
+
+  Disclaimer
+    This is covered in stronger and more binding detail in the license, but
+    the copyright holders make no representation about the suitability of
+    this program for any purpose. It is provided “as is” without expressed
+    or implied warranty.
+
+AUTHORS
+    Seth Robertson <mailto:projectbaka@baka.org>
+
+    CA-baka home: <http://github.com/SethRobertson/CA-baka>
+

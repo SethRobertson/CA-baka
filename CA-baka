@@ -1,0 +1,1177 @@
+#!/usr/bin/perl
+######################################################################
+#
+# ++Copyright BAKA++
+#
+# Copyright (c) 2012 The Authors.  All right reserved.
+#
+# The source code is licensed to you under the terms of the file
+# LICENSE.TXT in this release for further detials
+#
+# Send e-mail to <projectbaka@baka.org> for further information
+#
+# - -Copyright BAKA- -
+#
+# Certificate authority
+#
+=encoding utf8
+
+=cut
+
+use 5.012;
+use strict;
+use utf8;
+#use autodie;
+use warnings;
+use warnings	qw< FATAL utf8 >;
+no warnings	qw< uninitialized >;
+use open	qw< :std :utf8 >;
+#use charnames	qw< :full >;
+use feature	qw< unicode_strings >;
+
+#use Encode		qw< encode decode >;
+use Unicode::Normalize	qw< NFD NFC >;
+use Carp		qw< carp croak confess cluck >;
+use File::Basename	qw< basename >;
+use Getopt::Long;
+use FindBin;
+use File::Spec;
+use POSIX qw(strftime);
+use File::Copy;
+
+$0 = basename($0);		# Shorter messages
+
+my($USAGE) = "Usage: $0:
+ ## Specify location of CA dir.  Default ../etc/CA from location of program ##
+ [--workdir directory]
+
+  ## X509 Subject overrides: Required when running --newca ##
+ [--country|--C country] [--state|--ST state] [--locality|--L city]
+ [--organization|--O company] [--organizationalunit|--OU department]
+
+ ## Certificate length override.  Default 365 days ##
+ [--days number]
+
+ ## Certificate key length.  Default 2048 bits ##
+ [--keylen bitlen]
+
+ ## Initialize certificate authority.  Requires X509 subject fields set ##
+ [--newca CN Email]
+
+ ## Create subsidiary certificate authority.
+ [--subca CN Email NewWorkDir]
+
+ ## Create a server certificate. ##
+ [--newserver CN [Email]]
+
+ ## Create a client certificate. ##
+ [--newclient CN [Email]]
+
+ ## Create a mail certificate. ##
+ [--newmail CN [Email]]
+
+ ## Specify certificate alternative names.  Only one cert can be generated ##
+ ### Valid types are email, URI, DNS, and IP ###
+ [--altnames TYPE:value]...
+
+ ## Revoke an existing certificate.  ##
+ [--revoke CN]
+
+ ## Renew an existing non-CA 'CN'.  Normally duplicate CNs are rejected ##
+ [--renew]
+
+ ## Verify that a certificate was properly signed ##
+ [--verify filename]
+
+ [--version] [--verbose]+ [-v]+ [--quiet] \n";
+my(%OPTIONS,@CAinfo);
+my (@NewServer,@NewClient,@NewMail,@AltNames,@SubCA);
+
+$OPTIONS{'workdir'} = File::Spec->canonpath("$FindBin::Bin/../etc/CA");
+$OPTIONS{'days'} = 365;
+$OPTIONS{'keylen'} = 2048;
+
+Getopt::Long::Configure("no_ignore_case", "no_auto_abbrev", "no_getopt_compat", "require_order");
+GetOptions(\%OPTIONS, 'workdir=s', 'C|country=s', 'ST|state=s', 'L|locality=s', 'O|organization=s', 'OU|organizationalunit=s', 'revoke=s', 'verify=s', 'newserver=s{1,2}'=>\@NewServer, 'altnames=s'=>\@AltNames, 'newclient=s{1,2}'=>\@NewClient, 'newmail=s{1,2}'=>\@NewMail, 'newca=s{2}'=>\@CAinfo, 'subca=s{3}'=>\@SubCA, 'renew', 'days=i', 'keylen=i', 'version', 'verbose|v+', 'quiet') || die $USAGE;
+
+##################################################
+# Look for parse errors (easy with optional arguments)
+die "Neither CN nor Email may start with leading -\n" if (grep(/^-/,(@NewMail,@NewClient,@NewServer,@CAinfo)));
+
+##################################################
+# Cannot specify subject alternative names if generating multiple certificates at one time
+if (@AltNames)
+{
+  if (((@NewServer > 0) + (@NewClient > 0) + (@NewMail > 0) + (@CAinfo > 0) + (@SubCA > 0)) != 1)
+  {
+    die "Must specify one and only one certificate generation option when using --altnames\n$USAGE";
+  }
+}
+
+
+# Globalish variables
+my ($C,$ST,$L,$O,$OU) = ($OPTIONS{'C'},$OPTIONS{'ST'},$OPTIONS{'L'},$OPTIONS{'O'},$OPTIONS{'OU'});
+my ($CA_CN,$CA_EM);
+my ($CA_DIR) = $OPTIONS{'workdir'};
+my ($ARCHIVE_BASE) = "$CA_DIR/archive";
+my ($ARCHIVE_DIR);
+my ($TRUSTED_DIR) = "$CA_DIR/trusted-certs";
+my ($CA_KEY) = "$CA_DIR/ca.key";
+my ($CA_CRT) = "$CA_DIR/ca.crt";
+my ($CA_CRL) = "$CA_DIR/ca.crl";
+my ($CA_INFO) = "$CA_DIR/.cainfo";
+my ($TMPCONF) = "$CA_DIR/tmp/ssl.conf";
+my ($StartDate) = strftime("%Y%m%d%H%M%SZ", gmtime(time - 86400));
+my ($TMP_SERIAL) = "$CA_DIR/tmp/tmp-serial";
+
+
+
+######################################################################
+#
+# Find unique serial number for this request
+#
+sub genserial()
+{
+  my $old;
+
+  # Consider locking against multiple updaters, something like
+  # system("lockfile $TMP_SERIAL.lock");
+  # die "Multiple access restriction: serial number locked\n" if ($?);
+  if (open(R,"<",$TMP_SERIAL))
+  {
+    $old = <R>;
+    chomp($old);
+    close(R);
+    $old = hex($old);
+  }
+  my $new = time;
+  $new = $old + 1 if ($new <= $old);
+  open(W,">","$TMP_SERIAL") || die "Cannot open serial number: $!";
+  printf W ("%8x\n",$new);
+  close(W);
+  # unlink("$TMP_SERIAL.lock");
+}
+
+
+
+######################################################################
+#
+# Make ssl configuration for this request
+#
+sub gensslconf($$$$$)
+{
+  my ($extensions,$cn,$email,$altnames,$base) = @_;
+
+  my ($san_line) = "";
+  $san_line = qq^subjectAltName	= \@alt_name_section\n^ if ($altnames && @$altnames);
+
+  # Consider locking against multiple updaters, see genserial for example
+  open(W,">",$TMPCONF) || die "Cannot open temporary ssl configuration file $TMPCONF: $!";
+
+  print W <<EOF;
+[ req ]
+default_bits		= 2048
+distinguished_name	= req_distinguished_name
+prompt			= no
+x509_extensions		= $extensions
+
+[ req_distinguished_name ]
+EOF
+
+print W qq^C			= "$C"\n^ if ($C);
+print W qq^ST			= "$ST"\n^ if ($ST);
+print W qq^L			= "$L"\n^ if ($L);
+print W qq^O			= "$O"\n^ if ($O);
+print W qq^OU			= "$OU"\n^ if ($OU);
+print W qq^emailAddress		= "$email"\n^ if ($email);
+
+print W <<EOF;
+CN			= "$cn"
+
+[ v3_ca ]
+subjectKeyIdentifier	= hash
+authorityKeyIdentifier	= keyid:always,issuer:always
+basicConstraints	= critical, CA:true
+keyUsage		= critical, digitalSignature, keyCertSign, cRLSign
+$san_line
+
+[ sub_ca ]
+subjectKeyIdentifier	= hash
+authorityKeyIdentifier	= keyid:always,issuer:always
+basicConstraints	= critical, CA:true, pathlen:0
+keyUsage		= critical, digitalSignature, keyCertSign, cRLSign
+$san_line
+
+[ server ]
+basicConstraints	= critical, CA:FALSE
+subjectKeyIdentifier	= hash
+authorityKeyIdentifier	= keyid:always,issuer:always
+nsCertType		= server
+extendedKeyUsage	= serverAuth
+keyUsage		= critical, digitalSignature, keyEncipherment
+$san_line
+
+[ client ]
+basicConstraints	= critical, CA:FALSE
+subjectKeyIdentifier	= hash
+authorityKeyIdentifier	= keyid:always,issuer:always
+keyUsage		= digitalSignature, keyEncipherment
+nsCertType		= client
+extendedKeyUsage	= critical, clientAuth
+$san_line
+
+[ mail_cert ]
+basicConstraints	= critical, CA:FALSE
+subjectKeyIdentifier	= hash
+authorityKeyIdentifier	= keyid:always,issuer:always
+keyUsage		= critical, digitalSignature, keyEncipherment
+nsCertType		= email
+extendedKeyUsage	= emailProtection
+$san_line
+
+[ crl_ext ]
+authorityKeyIdentifier	= keyid:always,issuer:always
+
+[ ca ]
+default_ca		= CA_own
+[ CA_own ]
+serial			= $TMP_SERIAL
+default_days		= $OPTIONS{'days'}
+default_crl_days	= $OPTIONS{'days'}
+default_md		= sha1
+preserve		= no
+policy			= policy_anything
+basicConstraints	= CA:true
+private_key		= $base/ca.key
+new_certs_dir		= $base/trusted-certs
+database		= $base/trusted-certs/index.txt
+crl			= $base/ca.crl
+certificate		= $base/ca.crt
+
+[ policy_anything ]
+countryName		= optional
+stateOrProvinceName	= optional
+localityName		= optional
+organizationName	= optional
+organizationalUnitName	= optional
+commonName		= supplied
+emailAddress		= optional
+
+EOF
+
+  # Add subject alternative name section
+  if ($altnames && @$altnames)
+  {
+    my %type;
+    print W "[ alt_name_section ]\n";
+
+    foreach my $saname (@$altnames)
+    {
+      my ($type,$value) = split(/:/,$saname,2);
+      printf W (qq^%s.%d = "%s"\n^,$type,++$type{$type},$value);
+    }
+    print W "\n"
+  }
+
+  close(W);
+}
+
+
+
+######################################################################
+#
+# Execute a command with logging, output returning, etc
+#
+sub run($;$)
+{
+  my ($cmd,$ignoreerror) = @_;
+  print "Running: $cmd\n" if ($OPTIONS{'verbose'});
+  $cmd = "($cmd) 2>&1" unless ($OPTIONS{'verbose'});
+  my $out = `$cmd`;
+  my ($dup) = $out;
+  $out =~ s/^(.)/  $1/gm;
+  print $out if (!($OPTIONS{'quiet'} && $?==0) && !$ignoreerror);
+  $dup;
+}
+
+
+
+######################################################################
+#
+# Execute an openssl command
+#
+sub openssl($;$)
+{
+  my ($cmd,$ignoreerror) = @_;
+  my $dup = run("openssl $cmd",$ignoreerror);
+  die "Failed during openssl [$_[0]] (@{[join(':',caller())]})" if ($? && !$ignoreerror);
+  $dup;
+}
+
+
+
+######################################################################
+#
+# Update the trusted certificate directory with the hashed name
+#
+sub hash($$$)
+{
+  my ($file,$type,$dir) = @_;
+  my ($hashed) = openssl("'$type' -hash -noout -in '$file'");
+  chomp($hashed);
+  my $extension = ".0";
+  $extension = ".r0" if ($type eq "crl");
+  $hashed = "$dir/$hashed$extension";
+  unlink($hashed);
+  link($file,$hashed) || die "Could not link $file to $hashed: $!";
+}
+
+
+
+######################################################################
+#
+# Validate subject names for sanity, attacks, etc
+#
+sub sane_name($$)
+{
+  my ($name,$opt) = @_;
+
+  if (length($name) < 1)
+  {
+    die "Invalid name, must contain at least one byte\n" unless ($opt);
+    return;
+  }
+  die qq^Invalid name $name, cannot contain '"'\n^ if ($name =~ m/\"/);
+  die "Invalid name $name, cannot contain '/'\n" if ($name =~ m:/: && !$opt);
+  die "Invalid name $name, cannot equal '.' or '..'\n" if ($name eq '.' || $name eq '..');
+  die "Invalid name $name, cannot equal name of certificate authority\n" if ($name eq $CA_CN);
+  die "Invalid name $name, already in use\n" if (-d "$ARCHIVE_BASE/$name" && !$OPTIONS{'renew'});
+  die "Invalid name, contains control characters\n" if ($name =~ /[\000-\037]/);
+}
+
+
+
+######################################################################
+#
+# Findtypes for an existing certificate
+#
+sub findtypes($)
+{
+  my ($dir) = @_;
+
+  if (!-d $dir && -d "$ARCHIVE_BASE/$dir")
+  {
+    $dir = "$ARCHIVE_BASE/$dir";
+  }
+
+  die "Cannot find information for $dir\n" unless (-d $dir);
+
+  my ($type,$extension);
+  if (-f "$dir/ca.crt")
+  {
+    $type="ca";
+    $extension="v3_ca";
+  }
+  if (-f "$dir/subca.crt")
+  {
+    $type="subca";
+    $extension="sub_ca";
+  }
+  if (-f "$dir/server.crt")
+  {
+    $type="server";
+    $extension="server";
+  }
+  if (-f "$dir/client.crt")
+  {
+    $type="client";
+    $extension="client";
+  }
+  if (-f "$dir/mail.crt")
+  {
+    $type="mail";
+    $extension="mail_cert";
+  }
+  my ($fn) = "$dir/$type.crt";
+
+  if (wantarray)
+  {
+    ($fn,$type,$extension);
+  }
+  else
+  {
+    $fn;
+  }
+}
+
+
+
+######################################################################
+#
+# Revoke a certificate
+#
+sub revoke($$)
+{
+  my ($cn,$dir) = @_;
+
+  my ($fn,$type,$extension) = findtypes($dir);
+
+  genserial();
+  gensslconf($extension,$cn,undef,undef,$CA_DIR);
+
+  die "Cannot find certificate to revoke in standard archive location\n" if (!-f "$dir/$type.crt");
+
+  openssl("ca -revoke '$dir/$type.crt' -config '$TMPCONF'");
+  openssl("ca -gencrl -out '$CA_CRL' -config '$TMPCONF'");
+  hash($CA_CRL,"crl",$TRUSTED_DIR);
+  open(X,">","$dir/REVOKED");
+  print X "Certificate revoked.\n";
+  close(X);
+
+  my ($serial) = openssl(qq^x509 -in '$dir/$type.crt' -serial -noout^);
+  die "Could not find serial number in old certificate--already revoked but not moved away\n" unless ($serial =~ /^serial=([A-F0-9]+)$/);
+  $serial = $1;
+  my ($newdir) = "$dir-revoked-$serial";
+  die "Revoked certificate serial directory already exists: $newdir\n" if ( -e $newdir);
+  File::Copy::move($dir,$newdir);
+}
+
+
+
+######################################################################
+#
+# Validate names with renew support
+#
+sub validate_names($$)
+{
+  my ($namesref,$type) = @_;
+
+  # Check against directory attacks
+  for(my $x=0;$x<=$#{$namesref};$x++)
+  {
+    my ($name) = $namesref->[$x];
+    sane_name($name,$x);
+
+    # A real script would need to deal with IDN homographs or other control character attacks here
+  }
+
+  my ($dir) = $ARCHIVE_BASE."/".$namesref->[0];
+  print STDERR "Checking dir $dir\n";
+  if (-d $dir)
+  {
+    # We already checked that we are in --renew mode
+
+    if (! -f "$dir/$type.crt")
+    {
+      die "Cannot renew to a different certificate type ($dir/$type)\n";
+    }
+
+    revoke($namesref->[0],$dir);
+  }
+}
+
+
+
+######################################################################
+#
+# Validate subject alternative names
+#
+sub validate_altnames(@)
+{
+  foreach my $saname (@_)
+  {
+    my ($type,$value) = split(/:/,$saname,2);
+    die "Invalid alternative name type $type\n" if ($type !~ /^(email|IP|DNS|URI)$/);
+    sane_name($value,1);
+  }
+}
+
+
+
+######################################################################
+#
+# Generate non-CA certificates
+#
+sub gencert($$$$)
+{
+  my ($namelist,$extensions,$dirent,$username) = @_;
+
+  print STDERR "Generating $username certificate\n" unless ($OPTIONS{'quiet'});
+
+  # Validate for sanity
+  validate_names($namelist,$dirent);
+
+  # Choose serial for certificate
+  genserial();
+
+  # Prepare configuration file for generation
+  gensslconf($extensions,$namelist->[0],$namelist->[1],\@AltNames,$CA_DIR);
+
+  # Prepare directory to dump all of this information
+  $ARCHIVE_DIR="$ARCHIVE_BASE/$namelist->[0]";
+  die "Existing CN: ".($namelist->[0])."\n" if (-e "$ARCHIVE_DIR");
+  mkdir($ARCHIVE_DIR);
+
+  # Generate certificate
+  my ($mask) = umask(077);
+  openssl("genrsa -out '$ARCHIVE_DIR/$dirent.key' '$OPTIONS{'keylen'}'");
+  umask($mask);
+  openssl("req -config '$TMPCONF' -new -key '$ARCHIVE_DIR/$dirent.key' -out '$CA_DIR/tmp/$dirent.csr' -extensions $extensions");
+
+  my ($other) = "";
+  if ($extensions eq "v3_ca" && ! -f $CA_CRT)
+  {
+    $other .= " -selfsign";
+    link("$ARCHIVE_DIR/$dirent.key",$CA_KEY) || die "Cannot move $dirent.key into position: $!\n";
+  }
+
+  openssl("ca -batch -startdate $StartDate -config '$TMPCONF' $other -key '$CA_KEY' -out '$ARCHIVE_DIR/$dirent.crt' -extensions $extensions -days '$OPTIONS{'days'}' -infiles '$CA_DIR/tmp/$dirent.csr'");
+
+  if ($extensions !~ /_ca$/)
+  {
+    openssl("pkcs12 -nodes -password pass:mypass -export -out '$ARCHIVE_DIR/$dirent.p12' -inkey '$ARCHIVE_DIR/$dirent.key' -in '$ARCHIVE_DIR/$dirent.crt' -certfile '$CA_CRT'");
+  }
+
+  print "$username Certificates may be found in $ARCHIVE_DIR\n" unless ($OPTIONS{'quiet'});
+}
+
+
+
+######################################################################
+#
+# Gen certificate authority (both initial and subsidiary)
+#
+sub genca($$$$$$$$$)
+{
+  my ($C,$ST,$L,$O,$OU,$CA_CN,$CA_EM,$CA_DIR,$CA_PARENT) = @_;
+
+  die "Bad certificate information" unless ($CA_CN);
+
+  # Check for sane arguments
+  sane_name($C,1);
+  sane_name($ST,1);
+  sane_name($L,1);
+  sane_name($O,1);
+  sane_name($OU,1) if ($OU);
+  validate_names([$CA_CN,$CA_EM],"ca");
+
+  # Set up cert directory
+  mkdir($CA_DIR) || die "Cannot make working directory $CA_DIR: $!";
+  mkdir($CA_DIR."/tmp") || die "Cannot make tmp working directory: $!";
+
+  # Save legacy ARCHIVE_BASE in case this is a subCA case
+  my ($REAL_ARCHIVE_DIR) = "$ARCHIVE_BASE/$CA_CN";
+
+  # Make normal archive directory
+  my ($ARCHIVE_BASE) = "$CA_DIR/archive";
+  mkdir($ARCHIVE_BASE) || die "Cannot make tmp working directory: $!";
+
+  # Store default x509 subject information
+  my ($CA_INFO) = "$CA_DIR/.cainfo";
+  open(CA,">",$CA_INFO) || die "Cannot write certificate information file: $!\n";
+  print CA "$C\n$ST\n$L\n$O\n$OU\n$CA_CN\n$CA_EM\n";
+  close(CA);
+
+  # Set up trusted certificate directory
+  mkdir("$CA_DIR/trusted-certs");
+  open(CA,">","$CA_DIR/trusted-certs/index.txt") || die "Cannot create index: $!";
+  close(CA);
+
+  # What type of cert are we generating
+  my ($extension) = "v3_ca";
+  my ($dirent) = "ca";
+
+  # Override for subca case
+  if ($CA_PARENT)
+  {
+    $extension = "sub_ca";
+    $dirent = "subca";
+  }
+
+  # Generate certificate
+  gencert([$CA_CN,$CA_EM],$extension,$dirent,"New CA");
+
+  # Link certificate into CA root.  Key (non-sub case) has already been linked in
+  link("$ARCHIVE_DIR/$dirent.crt","$CA_DIR/ca.crt") || die "Cannot archive ca.crt: $!\n";
+
+  # Set up correct archive
+  my ($ARCHIVE_DIR) = "$ARCHIVE_BASE/$CA_CN";
+
+  # Prepare local variable in case it changes with subCA
+  my ($TRUSTED_DIR) = $TRUSTED_DIR;
+
+  if ($CA_PARENT)
+  {
+    # Move the subsidiary CA certificate into the new subdir
+    mkdir($ARCHIVE_DIR) || die "Cannot create directory '$ARCHIVE_DIR': $!\n";
+    link("$REAL_ARCHIVE_DIR/$dirent.crt","$ARCHIVE_DIR/ca.crt") || die "Cannot link ca.crt: $!\n";
+    link("$REAL_ARCHIVE_DIR/$dirent.key","$ARCHIVE_DIR/ca.key") || die "Cannot link ca.key: $!\n";
+    link("$REAL_ARCHIVE_DIR/$dirent.key","$CA_DIR/ca.key") || die "Cannot link ca.key: $!\n";
+  }
+
+  # Place ca cert in trusted directory (twice for subCA case)
+  if ($CA_PARENT)
+  {
+    hash("$REAL_ARCHIVE_DIR/$dirent.crt","x509",$TRUSTED_DIR);
+    $TRUSTED_DIR="$CA_DIR/trusted-certs";
+
+    # Regenerate SSL configuration with new directories
+    gensslconf($extension,$CA_CN,$CA_EM,\@AltNames,$CA_DIR);
+    hash("$CA_PARENT/ca.crt","x509",$TRUSTED_DIR);
+
+    # Link parent CRL into place
+    hash($CA_CRL,"crl",$TRUSTED_DIR);
+  }
+  hash("$REAL_ARCHIVE_DIR/$dirent.crt","x509",$TRUSTED_DIR);
+
+  # Pick correct location for CRL
+  my ($CA_CRL) = "$CA_DIR/ca.crl";
+
+  # Prepare for certificate revocation
+  openssl("ca -gencrl -out '$CA_CRL' -config '$TMPCONF'");
+  hash($CA_CRL,"crl",$TRUSTED_DIR);
+
+  my ($CA_CRT) = "$ARCHIVE_DIR/ca.crt";
+
+  # Create alternate formats of certificate
+  openssl("pkcs12 -nokeys -password pass:mypass -export -out '$ARCHIVE_DIR/ca.p12' -in '$CA_CRT'");
+  openssl("x509 -in '$CA_CRT' -out '$ARCHIVE_DIR/ca.der' -outform DER");
+  openssl("x509 -in '$CA_CRT' -out '$ARCHIVE_DIR/ca.pem' -outform PEM");
+  run("keytool -import -storepass mypass -alias cacert -noprompt -trustcacerts -keystore '$ARCHIVE_DIR/ca.jks' -file '$ARCHIVE_DIR/ca.der'");
+}
+
+
+
+if ($OPTIONS{'version'})
+{
+  my $version = "{UNTAGGED}";
+
+  # <TRICKY> If the version string is still UNTAGGED, try to run the local
+  # git commands to get the current hash and possibly tag; this is used by
+  # Makefile to get the correct string to replace it with.  Otherwise, the
+  # installation has replaced it with a version; don't mess with it.  Use
+  # string concatenation to keep this check from getting replaced. </TRICKY>
+
+  if ($version eq "{" . "UNTAGGED" . "}" && -x basename($0))
+  {
+    my ($desc) = `git describe --dirty --candidates=1 --tags 2>/dev/null`;
+    if ($?)
+    {
+      $desc = `git rev-parse HEAD`;
+      chomp($desc);
+      $desc = "Untagged ($desc)";
+    }
+    else
+    {
+      # strip out leading tag alphabetic and space, get just the numbers
+      $desc =~ s/^.*?([0-9][0-9._-]*[0-9])(?:-g[a-f0-9]*)?/$1/;
+      $desc =~ y=/_=--=;
+    }
+    chomp($desc);
+    $version = $desc;
+  }
+  print "$version\n";
+  exit(0);
+}
+
+
+
+##################################################
+# Check that subject alternative names are sane
+if (@AltNames)
+{
+  validate_altnames(@AltNames);
+}
+
+##################################################
+# Check for initialized working directory
+if (! -f $CA_INFO)
+{
+  # Not initialized, check for sanity and set it up (must have --newca)
+  die "Must delete certificate directory\n" if (-e $CA_DIR);
+  die "Missing --newca certificate information\n" unless (@CAinfo);
+  print STDERR "Generating certificate authority certificate\n" unless ($OPTIONS{'quiet'});
+  die "Must set x509 subject information (--C --ST --L --O, plus optionally --OU)\n" unless (defined($C) && defined($ST) && defined($L) && defined($O));
+
+  genca($C,$ST,$L,$O,$OU,$CAinfo[0],$CAinfo[1],$CA_DIR,undef);
+
+  undef(@CAinfo);
+}
+
+# Check for attempts to recreate CA after initialization
+die "Already have CA initialized\n" if (@CAinfo);
+die "Only partially initialized.  Check $CA_DIR\n" unless (-f "$CA_CRT");
+die "Only partially initialized.  Check $CA_DIR\n" unless (-f "$TRUSTED_DIR/index.txt");
+
+# Set up defaults, if needed
+open(CA,"<","$CA_INFO") || die "Cannot open certificate information file\n";
+my (@C) = <CA>;
+close(CA);
+chomp(@C);
+$C = $C[0] unless (defined($C));
+$ST = $C[1] unless (defined($ST));
+$L = $C[2] unless (defined($L));
+$O = $C[3] unless (defined($O));
+$OU = $C[4] unless (defined($OU));
+sane_name($C,1);
+sane_name($ST,1);
+sane_name($L,1);
+sane_name($O,1);
+sane_name($OU,1) if ($OU);
+($CA_CN,$CA_EM) = @C[5..$#C];
+die "Bad certificate information in $CA_INFO\n" unless ($CA_CN);
+
+##################################################
+# Create subsidiary CA signed by this one
+if (@SubCA)
+{
+  genca($C,$ST,$L,$O,$OU,$SubCA[0],$SubCA[1],$SubCA[2],$CA_DIR);
+}
+
+##################################################
+# Create server certificate
+if (@NewServer)
+{
+  gencert(\@NewServer,"server","server","Server");
+}
+
+##################################################
+# Create client certificate
+if (@NewClient)
+{
+  gencert(\@NewClient,"client","client","Client");
+}
+
+##################################################
+# Create user/mail certificate
+if (@NewMail)
+{
+  gencert(\@NewMail,"mail_cert","mail","Mail");
+}
+
+##################################################
+# Revoke a certificate
+if ($OPTIONS{'revoke'})
+{
+  $ARCHIVE_DIR="$ARCHIVE_BASE/$OPTIONS{'revoke'}";
+  die "Cannot find $OPTIONS{'revoke'} to revoke!\n" if (!-d $ARCHIVE_DIR);
+  revoke($OPTIONS{'revoke'},$ARCHIVE_DIR);
+}
+
+##################################################
+# Validate/verify that a certificate is good
+if ($OPTIONS{'verify'})
+{
+  $OPTIONS{'verify'} = findtypes($OPTIONS{'verify'}) unless (-f $OPTIONS{'verify'});
+
+  $_ = openssl("verify -CApath '$TRUSTED_DIR' -crl_check_all '$OPTIONS{'verify'}'");
+  die "Certificate not valid\n" if (/error/);
+
+  print "Certificate valid for the following purposes: ";
+
+  foreach my $purpose ("any", "crlsign", "nssslserver", "ocsphelper", "smimeencrypt", "smimesign", "sslclient", "sslserver", "timestampsign")
+  {
+    $_ = openssl("verify -CApath '$TRUSTED_DIR' -crl_check_all -purpose $purpose '$OPTIONS{'verify'}'", 1);
+    print " $purpose" if ($? == 0 && !/error/);
+  }
+  print "\n";
+  openssl("x509 -in '$OPTIONS{'verify'}' -noout -purpose");
+}
+
+
+=head1 NAME
+
+CA-baka - Simple X509 Certificate Authority/Generation Script
+
+The sysadmin's and network security developer's best friend.
+
+
+=head1 SYNOPSIS
+
+CA-baka
+S< [--workdir directory]>
+S< [--country|--C country] [--state|--ST state] [--locality|--L city]>
+S< [--organization|--O company] [--organizationalunit|--OU department]>
+S< [--days number]>
+S< [--keylen bitlen]>
+S< [--newca CN Email]>
+S< [--subca CN Email NewWorkDir]>
+S< [--newserver CN [Email]]>
+S< [--newclient CN [Email]]>
+S< [--newmail CN [Email]]>
+S< [--altnames TYPE:value]...>
+S< [--revoke CN]>
+S< [--renew]>
+S< [--verify filename]>
+S< [--verbose]+ [-v]+ [--quiet]>
+
+
+=head1 DESCRIPTION
+
+This Certificate Authority is designed for use by a skilled, trusted
+human who is generating full cryptographic packages for clients,
+servers, or peoples to blindly install without thought, without having
+to modify any configuration files or do special things with your shell
+before running commands, or the like.  The very model of a centralized
+CA dictatorship (I'll just keep those keys for backup purposes in case
+you happen to lose them, I won't use them to decrypt your future
+traffic, or forge your signatures, honest!).
+
+Everyone and their dog seems to have a certificate
+authority/generation script, but all of the ones I have seen so far,
+frankly, suck donkey balls for usability, documentation, and sanity.
+The most common ones "Easy CA" and the rather anonymously named "CA"
+used by RHEL, are particularly annoying.  This one does what I have
+wanted to do each and every time I have wanted to generate
+certificates, simply and cleanly.
+
+All of the most common certificate authority needs are provided:
+initial master certificate authority key/crt generation, subsidiary
+certificate authority key/crt generation, server key/crt generation,
+client key/crt generation, email key/crt generation, and certificate
+revocation.
+
+There is limited ability to modify the most popular information,
+including X509 subject identifier material, validity length, and key
+length.  Defaults are available for all values (except for X509
+subject identifier material during the initial setup of the master
+certificate authority).
+
+The first invocation of CA-baka (per --workdir) requires that you use
+C<--newca> with C<--country>, C<--state>, C<--locality>, and
+C<--organization> set to properly initialize the certificate
+authority.  Afterwards (or indeed at the same time as the C<--newca>
+invocation, you can issue other certificates using one or more of
+C<--subca>, C<--newserver>, C<--newclient>, C<--newmail> or revoke
+other certificates using C<--revoke>.  Other arguments modify the
+behavior of the system.
+
+
+=head1 OPTIONS
+
+The options control everything, and the script is not going to do
+anything (except perhaps error out depending on configuration) if you
+do not provide arguments.
+
+=over
+
+=item B<--workdir I<directory>>
+
+Set the certificate authority working directory.  If this is not
+specified, the directory ../etc/CA relative to the location of the
+"CA-baka" program will be used.  When first configuring the system
+C<--newca> the working directory must not exist.
+
+=item B<--country|C I<countrycode>>
+
+Set the X509 C country code.  This is required when using C<--newca>.
+Other executions, it may be specified or the value from the C<--newca>
+call will be used.  You may use quotes to send empty/complex/multiword
+identifiers.
+
+=item B<--state|ST I<state>>
+
+Set the X509 ST state.  This is required when using C<--newca>.  Other
+executions, it may be specified or the value from the C<--newca> call
+will be used.  You may use quotes to send empty/complex/multiword
+identifiers.
+
+=item B<--locality|L I<city>>
+
+Set the X509 L locality, typically the city name.  This is required
+when using C<--newca>.  Other executions, it may be specified or the
+value from the C<--newca> call will be used.  You may use quotes to
+send empty/complex/multiword identifiers.
+
+=item B<--organization|O I<company>>
+
+Set the X509 O organization, typically the company name.  This is
+required when using C<--newca>.  Other executions, it may be specified
+or the value from the C<--newca> call will be used.  You may use
+quotes to send empty/complex/multiword identifiers.
+
+=item B<--organizationalunit|OU I<department>>
+
+Set the X509 OU organizational unit, typically the department name.
+This is also optional.  Non-initial executions, it may be specified or
+the (possibly empty) value from the C<--newca> call will be used.  You
+may use quotes to send empty/complex/multiword identifiers.
+
+=item B<--newca I<CN Email>>
+
+Request that the initial certificate authority be set up with the
+indicated common name and email address.  You may use quotes to send
+empty/complex/multiword identifiers.
+
+The generated certificate, key, and various alternate forms of that
+data will be available in the work directory's archive subdirectory,
+in a further subdirectory named by the CN.  Distribution of this
+material is left as an exercise to the reader.
+
+=item B<--subca I<CN Email NewWorkDirectory>>
+
+Request that a subsidiary certificate authority be set up with the
+indicated common name and email address, in the new work directory
+specified.  This is much like creating an entirely distinct
+certificate authority with C<--newca> except: (1) the certificate is
+signed by the parent certificate, (2) you cannot create lower level
+subsidiary certificates authorities, (3) the X509 subject identifier
+material is defaulted from the C<--newca> call (but of course may be
+overridden on this execution, the values in play at the time of
+C<--subca> will be the new defaults for the C<--subca>'s work
+directory.  You may use quotes to send empty/complex/multiword
+identifiers.
+
+The generated certificate, key, and various alternate forms of that
+data will be available in the work directory's archive subdirectory,
+in a further subdirectory named by the CN.  Distribution of this
+material is left as an exercise to the reader.
+
+=item B<--newserver I<CN [Email]>>
+
+Request that a server certificate be generated with the indicated
+common name and the optional email address.  You may use quotes to
+send empty/complex/multiword identifiers (and if you have other
+command line options after this one, you B<must> specify an email
+address, though it may be empty.
+
+The generated certificate, key, and various alternate forms of that
+data will be available in the work directory's archive subdirectory,
+in a further subdirectory named by the CN.  Distribution of this
+material is left as an exercise to the reader.
+
+=item B<--newclient I<CN [Email]>>
+
+Request that a client certificate be generated with the indicated
+common name and the optional email address.  You may use quotes to
+send empty/complex/multiword identifiers (and if you have other
+command line options after this one, you B<must> specify an email
+address, though it may be empty.
+
+The generated certificate, key, and various alternate forms of that
+data will be available in the work directory's archive subdirectory,
+in a further subdirectory named by the CN.  Distribution of this
+material is left as an exercise to the reader.
+
+=item B<--newmail I<CN [Email]>>
+
+Request that a user mail certificate be generated with the indicated
+common name and the optional(recommended) email address.  You may use
+quotes to send empty/complex/multiword identifiers (and if you have
+other command line options after this one, you B<must> specify an
+email address, though it may be empty.
+
+The generated certificate, key, and various alternate forms of that
+data will be available in the work directory's archive subdirectory,
+in a further subdirectory named by the CN.  Distribution of this
+material is left as an exercise to the reader.
+
+=item B<--altname I<TYPE:value>>
+
+Request that the certificate being generated on this execution be
+given the listed subject alternate name (SAN).  You may only generate
+one certificate per execution if you have C<--altname> specified.
+This can be used to provide, eg, alternate hostnames for HTTPS server
+certificates (for multisite hosted domains) or alternate email address
+for mail certificates.
+
+Valid TYPEs are "email", "URI", "DNS", and "IP".  Typically "DNS" and
+"IP" are used for server certificates, and "email" is used for mail
+certificates.
+
+When using C<--altname> you B<must> specify the data (CN, email) you
+might have expected to be authories as part of the primary subject
+name as an alternate.  So if you set the CN to host1.example.com, you
+must also provide DNS:host1.example.com as an SAN).
+
+You must specify this argument multiple times, one per SAN you are
+attempting provide.
+
+=item B<--revoke I<CN>>
+
+Specify a desire to revoke a currently valid certificate.  The
+existing certificate directory will be moved away to an alternate name
+and the certificate revocation list (CRL) will be regenerated.
+Distribution of said CRL is left as an exercise to the reader.
+
+=item B<--days I<number>>
+
+Override the default number of days a certificate will be valid for.
+By default certificates are valid for 365 days.  Note that the start
+date of the certificate will be yesterday, to allow for poorly set
+clocks.
+
+=item B<--keylen I<bitlen>>
+
+Override the default key length of a certificate.  The default key
+length is 2048 bits.
+
+=item B<--renew>
+
+Normally you are forbidden to generate a certificate for a CN you have
+generated a certificate for previously.  However, as a special case,
+you may pass in the --renew option which will cause the existing
+certificate to be revoked, so that a fresh certificate can be
+generated.
+
+=item B<--verify I<filename|CN>>
+
+Attempt to verify a certificate given a file to the certificate or the
+CN of the certificate (the latter using the saved certificate
+material).  The CRL is checked to verify whether the certificate was
+revoked or not.  The purposes the certificates are valid for are
+displayed.
+
+=item B<--version>
+
+Print the version of this program.
+
+=item B<--verbose|v>
+
+Print more information when generating certificates.
+
+=item B<--quiet>
+
+Print less information when generating certificates.
+
+=back
+
+
+=head1 EXAMPLES
+
+A typical usage goes something like:
+
+  # Create certificate authority
+  CA-baka --workdir /etc/CA -C US --ST NY -L "New York" -O "Mythical NY Company" --newca ca.example.com ""
+
+  # Create web server certificate
+  CA-baka --workdir /etc/CA --newserver www.example.com webmaster@example.com
+
+  # Create mail certificate plus all common aliases
+  CA-baka --workdir /etc/CA --newserver mail.example.com postmaster@example.com --altname DNS:mail.example.com --altname DNS:pop.example.com --altname DNS:imap.example.com --altname:smtp.example.com
+
+  # Create VPN server certificate
+  CA-baka --workdir /etc/CA --newserver vpn.example.com ""
+
+  # Create specific user certificate for VPN
+  CA-baka --workdir /etc/CA --OU VPN --newclient "Joe Luser" joe@example.com
+  CA-baka --workdir /etc/CA --OU VPN --newclient "Bob 6pack" bob@example.com
+  CA-baka --workdir /etc/CA --OU VPN --newclient "Martha Stewardess" mstew@example.com
+
+  # Revoke bad certificate
+  CA-baka --workdir /etc/CA --OU VPN --revoke "Martha Stewardess"
+
+
+=head1 FILES/DIRECTORIES
+
+Within the workdirectory, you will see
+
+=over
+
+=item B<ca.crl>		Certificate revocation list
+
+=item B<ca.crt>		Certificate Authority Certificate
+
+=item B<ca.key>		Certificate Authority Key
+
+=item B<archive/>		Archive of all files generated
+
+=item B<tmp/>			Junk used in the production of certificates
+
+=item B<trusted-certs/>	Directory of trusted certificates ala C<CApath> for verification purposes.
+
+=back
+
+Under C<archive> you will have a bunch of directories, one per common
+name.  Under those directories you will see files like "ca.crt"
+"server.crt" "client.crt" "mail.crt" or "subca.crt" for the various
+forms of certificates, plus ".key" variants of these files which
+contain the private key.  There will typically also be several other
+files with names like ".der" ".jks" ".p12" and ".pem" which provide
+variants of these same certificates or keys and certificates.  If you
+need those variants, feel free to take them.  The ".p12" has a
+required password, which is "mypass".
+
+
+=head1 BUGS
+
+This Certificate Authority is designed for use by a skilled, trusted
+human who is generating or validating the inputs to the script.
+The remaining items are specific instances of this.
+
+=head2 Separation of key/csr generation from crt signing
+
+The key and csr is generated by the CA-baka instants before the signed
+crt is generated.  There is no prevision to accept CSRs from the
+outside world and sign them.  This probably wouldn't be too difficult.
+
+=head2 CRL
+
+The CRL is not a rotating window of short-lived valid CRLs, and there
+is not particular method to attempt to publish the CRL when it is
+generated.  The CRLs are generally valid as long (or longer!!) as the
+certificates which it purports to revoke, and this means attacks
+trying to prevent a client from ever getting an updated CRL might be
+very successful.
+
+=head2 Unsanitized input
+
+The script does not attempt to deal with "IDN Homograph Attacks" or
+"CN attacks against system tools".  For example, the system uses a
+Cyrillic "а" (← I typed the right character which looks identical to
+an "a".  Your processing may vary.)  instead of an ASCII "a", well
+that is just too bad.  Likewise, you might experience problems if the
+user attempts to use a CN which contains ";" or "&" or "$" or perhaps
+certain characters which attack the terminal by stuffing characters if
+you C<`ls`> the wrong directory.
+
+The system does attempt to do B<some> sanitization, specifically
+forbidding "'" or ^A-^Z control characters, and passing CN around in
+single quotes.  It has not been carefully audited to be free from
+defects.
+
+=head2 Key Encryption
+
+Basically none of the keys or other files generated have encrypted
+keys, except in cases where the format/tool (I'm looking at you
+pkcs12) forces a key.  Even then the key is static and stupid
+("mypass").
+
+=head2 Ability to generate multipurpose certificates
+
+You cannot generate a certificate for being both an SSL server and a
+SSL client.
+
+=head2 Ability to generate multiple certificates per CA
+
+Even though would be no filename conflict (so this could be added) you
+cannot generate a server certificate for CN:hosta.example.com and a
+client certificate for the same CN.
+
+=head2 Other CA best practices
+
+Most likely there are other best practices by CAs which are not being
+followed.
+
+
+=head1 COPYRIGHT
+
+Copyright ⓒ 2012 BAKA - See LICENSE.TXT
+
+If you think of it as a GPL2 without the ability to upgrade or the
+linkage restriction, you will not go far wrong.
+
+
+=head2 Disclaimer
+
+This is covered in stronger and more binding detail in the license,
+but the copyright holders make no representation about the suitability
+of this program for any purpose. It is provided “as is” without
+expressed or implied warranty.
+
+
+=head1 AUTHORS
+
+Seth Robertson L<mailto:projectbaka@baka.org>
+
+CA-baka home: L<< http://github.com/SethRobertson/CA-baka >>
