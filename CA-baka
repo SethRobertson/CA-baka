@@ -491,7 +491,7 @@ sub validate_altnames(@)
 
 ######################################################################
 #
-# Generate non-CA certificates
+# Generate certificates
 #
 sub gencert($$$$)
 {
@@ -530,7 +530,9 @@ sub gencert($$$$)
 
   if ($extensions !~ /_ca$/)
   {
+    my ($mask) = umask(077);
     openssl("pkcs12 -nodes -password pass:mypass -export -out '$ARCHIVE_DIR/$dirent.p12' -inkey '$ARCHIVE_DIR/$dirent.key' -in '$ARCHIVE_DIR/$dirent.crt' -certfile '$CA_CRT'");
+    umask($mask);
   }
 
   print "$username Certificates may be found in $ARCHIVE_DIR\n" unless ($OPTIONS{'quiet'});
