@@ -8,9 +8,9 @@ SYNOPSIS
     state] [--locality|--L city] [--organization|--O company]
     [--organizationalunit|--OU department] [--days number] [--keylen bitlen]
     [--newca CN Email] [--subca CN Email NewWorkDir] [--newserver CN
-    [Email]] [--newclient CN [Email]] [--newmail CN [Email]] [--altnames
-    TYPE:value]... [--revoke CN] [--renew] [--verify filename] [--verbose]+
-    [-v]+ [--quiet]
+    [Email]] [--newclient CN [Email]] [--newmail CN [Email]] [--newcoder CN
+    [Email]] [--altnames TYPE:value]... [--revoke CN] [--renew] [--verify
+    filename] [--verbose]+ [-v]+ [--quiet]
 
 DESCRIPTION
     This Certificate Authority is designed for use by a skilled, trusted
@@ -45,8 +45,9 @@ DESCRIPTION
     "--organization" set to properly initialize the certificate authority.
     Afterwards (or indeed at the same time as the "--newca" invocation, you
     can issue other certificates using one or more of "--subca",
-    "--newserver", "--newclient", "--newmail" or revoke other certificates
-    using "--revoke". Other arguments modify the behavior of the system.
+    "--newserver", "--newclient", "--newmail", "--newcoder" or revoke other
+    certificates using "--revoke". Other arguments modify the behavior of
+    the system.
 
 OPTIONS
     The options control everything, and the script is not going to do
@@ -147,6 +148,18 @@ OPTIONS
         quotes to send empty/complex/multiword identifiers (and if you have
         other command line options after this one, you must specify an email
         address, though it may be empty.
+
+        The generated certificate, key, and various alternate forms of that
+        data will be available in the work directory's archive subdirectory,
+        in a further subdirectory named by the CN. Distribution of this
+        material is left as an exercise to the reader.
+
+    --newcoder *CN [Email]*
+        Request that a code signing certificate be generated with the
+        indicated common name and the optional(recommended) email address.
+        You may use quotes to send empty/complex/multiword identifiers (and
+        if you have other command line options after this one, you must
+        specify an email address, though it may be empty.
 
         The generated certificate, key, and various alternate forms of that
         data will be available in the work directory's archive subdirectory,
