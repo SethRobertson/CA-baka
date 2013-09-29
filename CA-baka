@@ -38,6 +38,7 @@ use FindBin;
 use File::Spec;
 use POSIX qw(strftime);
 use File::Copy;
+use Time::Local;
 
 $0 = basename($0);		# Shorter messages
 
@@ -86,7 +87,7 @@ my($USAGE) = "Usage: $0:
  ## Verify that a certificate was properly signed ##
  [--verify filename]
 
- [--version] [--verbose]+ [-v]+ [--quiet] \n";
+ [--force] [--version] [--verbose]+ [-v]+ [--quiet] \n";
 my(%OPTIONS,@CAinfo);
 my (@NewServer,@NewClient,@NewMail,@NewCoder,@AltNames,@SubCA);
 
@@ -95,7 +96,7 @@ $OPTIONS{'days'} = 365;
 $OPTIONS{'keylen'} = 2048;
 
 Getopt::Long::Configure("no_ignore_case", "no_auto_abbrev", "no_getopt_compat", "require_order");
-GetOptions(\%OPTIONS, 'workdir=s', 'C|country=s', 'ST|state=s', 'L|locality=s', 'O|organization=s', 'OU|organizationalunit=s', 'revoke=s', 'verify=s', 'newserver=s{1,2}'=>\@NewServer, 'altnames=s'=>\@AltNames, 'newclient=s{1,2}'=>\@NewClient, 'newmail=s{1,2}'=>\@NewMail, 'newcoder=s{1,2}'=>\@NewCoder, 'newca=s{2}'=>\@CAinfo, 'subca=s{3}'=>\@SubCA, 'renew', 'days=i', 'keylen=i', 'version', 'verbose|v+', 'quiet') || die $USAGE;
+GetOptions(\%OPTIONS, 'workdir=s', 'C|country=s', 'ST|state=s', 'L|locality=s', 'O|organization=s', 'OU|organizationalunit=s', 'revoke=s', 'verify=s', 'newserver=s{1,2}'=>\@NewServer, 'altnames=s'=>\@AltNames, 'newclient=s{1,2}'=>\@NewClient, 'newmail=s{1,2}'=>\@NewMail, 'newcoder=s{1,2}'=>\@NewCoder, 'newca=s{2}'=>\@CAinfo, 'subca=s{3}'=>\@SubCA, 'renew', 'days=i', 'keylen=i', 'force', 'version', 'verbose|v+', 'quiet') || die $USAGE;
 
 ##################################################
 # Look for parse errors (easy with optional arguments)
@@ -511,6 +512,32 @@ sub gencert($$$$)
 
   print STDERR "Generating $username certificate\n" unless ($OPTIONS{'quiet'});
 
+  if (!$OPTIONS{'force'})
+  {
+    # Check to make sure requested lifetime is not longer than
+    # possible (CA's) lifetime
+
+    # Could there be a locale problem interpreting -enddate output?
+
+    $OPTIONS{'quiet'}++;
+    my ($caexp) = openssl("x509 -in $CA_CRT -noout -enddate");
+    $OPTIONS{'quiet'}--;
+    die "Could not parse attempt to get CA expiration date: $caexp"
+      unless ($caexp =~ /^notAfter=(\S+)\s+(\d+)\s+(\d+):(\d+):(\d+)\s+(\d+) GMT$/);
+
+    my ($camo) = {'Jan'=>0,'Feb'=>1,'Mar'=>2,'Apr'=>3,'May'=>4,'Jun'=>5,
+		  'Jul'=>6,'Aug'=>7,'Sep'=>8,'Oct'=>9,'Nov'=>10,'Dec'=>11};
+    $camo = $camo->{$1};
+
+    die "Bad expiration date (locale bug?)\n" unless (defined($camo));
+
+    my ($caexptime) = timegm($5,$4,$3,$2,$camo,$6);
+    my ($newexptime) = time + 86400*$OPTIONS{'days'};
+
+    die "\nERROR: Requested expiration --days $OPTIONS{'days'} greater than CA expiration of:\n  ${caexp}  Use --force to override\n"
+      if ($newexptime > $caexptime);
+  }
+
   # Validate for sanity
   validate_names($namelist,$dirent);
 
@@ -834,6 +861,7 @@ S< [--altnames TYPE:value]...>
 S< [--revoke CN]>
 S< [--renew]>
 S< [--verify filename]>
+S< [--force]>
 S< [--verbose]+ [-v]+ [--quiet]>
 
 
@@ -1045,6 +1073,13 @@ By default certificates are valid for 365 days.  Note that the start
 date of the certificate will be yesterday, to allow for poorly set
 clocks.
 
+Note that issued certificates cannot by default have an expiration
+date greater than the certifying authority's certificate expiration
+date (you can use --force to bypass this check, but it is a bad idea
+to do so, since after that date the issued certificate will no longer
+validate).  The corollary is that Certificate Authority Certificates
+should probably have a fairly long lifetime.
+
 =item B<--keylen I<bitlen>>
 
 Override the default key length of a certificate.  The default key
@@ -1058,6 +1093,17 @@ you may pass in the --renew option which will cause the existing
 certificate to be revoked, so that a fresh certificate can be
 generated.
 
+You use this option with the option(s) to generate a "new" certificate
+with an existing name.
+
+Doing this for your CA certificate (eg revoking your CA certificate)
+is a very bad idea, nothing good will come from it.  You should
+instead just rotate/archive/rename/delete your CA working directory and start
+over, this time perhaps with a longer validity range and perhaps a
+rotating sub-CA system (which you can --renew, but should also
+just rotate/archive/rename/delete the sub-CA's working directory).
+
+
 =item B<--verify I<filename|CN>>
 
 Attempt to verify a certificate given a file to the certificate or the
@@ -1065,6 +1111,10 @@ CN of the certificate (the latter using the saved certificate
 material).  The CRL is checked to verify whether the certificate was
 revoked or not.  The purposes the certificates are valid for are
 displayed.
+
+=item B<--force>
+
+Bypass certain sanity checks (eg maximum certificate lifetime)
 
 =item B<--version>
 
@@ -1152,7 +1202,7 @@ outside world and sign them.  This probably wouldn't be too difficult.
 =head2 CRL
 
 The CRL is not a rotating window of short-lived valid CRLs, and there
-is not particular method to attempt to publish the CRL when it is
+is no particular method to attempt to publish the CRL when it is
 generated.  The CRLs are generally valid as long (or longer!!) as the
 certificates which it purports to revoke, and this means attacks
 trying to prevent a client from ever getting an updated CRL might be

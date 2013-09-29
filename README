@@ -10,7 +10,7 @@ SYNOPSIS
     [--newca CN Email] [--subca CN Email NewWorkDir] [--newserver CN
     [Email]] [--newclient CN [Email]] [--newmail CN [Email]] [--newcoder CN
     [Email]] [--altnames TYPE:value]... [--revoke CN] [--renew] [--verify
-    filename] [--verbose]+ [-v]+ [--quiet]
+    filename] [--force] [--verbose]+ [-v]+ [--quiet]
 
 DESCRIPTION
     This Certificate Authority is designed for use by a skilled, trusted
@@ -198,6 +198,13 @@ OPTIONS
         date of the certificate will be yesterday, to allow for poorly set
         clocks.
 
+        Note that issued certificates cannot by default have an expiration
+        date greater than the certifying authority's certificate expiration
+        date (you can use --force to bypass this check, but it is a bad idea
+        to do so, since after that date the issued certificate will no
+        longer validate). The corollary is that Certificate Authority
+        Certificates should probably have a fairly long lifetime.
+
     --keylen *bitlen*
         Override the default key length of a certificate. The default key
         length is 2048 bits.
@@ -209,12 +216,26 @@ OPTIONS
         existing certificate to be revoked, so that a fresh certificate can
         be generated.
 
+        You use this option with the option(s) to generate a "new"
+        certificate with an existing name.
+
+        Doing this for your CA certificate (eg revoking your CA certificate)
+        is a very bad idea, nothing good will come from it. You should
+        instead just rotate/archive/rename/delete your CA working directory
+        and start over, this time perhaps with a longer validity range and
+        perhaps a rotating sub-CA system (which you can --renew, but should
+        also just rotate/archive/rename/delete the sub-CA's working
+        directory).
+
     --verify *filename|CN*
         Attempt to verify a certificate given a file to the certificate or
         the CN of the certificate (the latter using the saved certificate
         material). The CRL is checked to verify whether the certificate was
         revoked or not. The purposes the certificates are valid for are
         displayed.
+
+    --force
+        Bypass certain sanity checks (eg maximum certificate lifetime)
 
     --version
         Print the version of this program.
@@ -281,11 +302,10 @@ BUGS
 
   CRL
     The CRL is not a rotating window of short-lived valid CRLs, and there is
-    not particular method to attempt to publish the CRL when it is
-    generated. The CRLs are generally valid as long (or longer!!) as the
-    certificates which it purports to revoke, and this means attacks trying
-    to prevent a client from ever getting an updated CRL might be very
-    successful.
+    no particular method to attempt to publish the CRL when it is generated.
+    The CRLs are generally valid as long (or longer!!) as the certificates
+    which it purports to revoke, and this means attacks trying to prevent a
+    client from ever getting an updated CRL might be very successful.
 
   Unsanitized input
     The script does not attempt to deal with "IDN Homograph Attacks" or "CN
