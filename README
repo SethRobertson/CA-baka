@@ -194,16 +194,18 @@ OPTIONS
 
     --days *number*
         Override the default number of days a certificate will be valid for.
-        By default certificates are valid for 365 days. Note that the start
-        date of the certificate will be yesterday, to allow for poorly set
-        clocks.
+        By default, normal certificates are valid for 365 days (1 year) and
+        CA and CRL certificates are valid for 1825 days (5 years). Note that
+        the start date of the certificate will be yesterday, to allow for
+        poorly set clocks.
 
         Note that issued certificates cannot by default have an expiration
         date greater than the certifying authority's certificate expiration
         date (you can use --force to bypass this check, but it is a bad idea
         to do so, since after that date the issued certificate will no
         longer validate). The corollary is that Certificate Authority
-        Certificates should probably have a fairly long lifetime.
+        Certificates should probably have a fairly long lifetime. The
+        corollary's corollary is that your should protect your CA key well.
 
     --keylen *bitlen*
         Override the default key length of a certificate. The default key
