@@ -470,7 +470,7 @@ sub validate_names($$)
   }
 
   my ($dir) = $ARCHIVE_BASE."/".$namesref->[0];
-  print STDERR "Checking dir $dir\n";
+  print STDERR "Checking dir $dir\n" unless ($OPTIONS{'quiet'});
   if (-d $dir)
   {
     # We already checked that we are in --renew mode
