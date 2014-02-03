@@ -512,7 +512,7 @@ sub gencert($$$$)
 
   print STDERR "Generating $username certificate\n" unless ($OPTIONS{'quiet'});
 
-  if (!$OPTIONS{'force'})
+  if (!$OPTIONS{'force'} && -f $CA_CRT)
   {
     # Check to make sure requested lifetime is not longer than
     # possible (CA's) lifetime
