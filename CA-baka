@@ -103,6 +103,13 @@ GetOptions(\%OPTIONS, 'workdir=s', 'C|country=s', 'ST|state=s', 'L|locality=s', 
 die "Neither CN nor Email nor Code Signers may start with leading -\n" if (grep(/^-/,(@NewMail,@NewCoder,@NewClient,@NewServer,@CAinfo)));
 
 ##################################################
+# Look for illegal duplicative requests
+if (@NewServer > 2 || @NewClient > 2 || @NewMail > 2 || @NewCoder > 2 || @CAinfo > 2 || @SubCA > 2)
+{
+  die "Must specify a specific certificate type to generate exactly once.\n$USAGE";
+}
+
+##################################################
 # Cannot specify subject alternative names if generating multiple certificates at one time
 if (@AltNames)
 {
