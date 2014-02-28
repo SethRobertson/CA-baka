@@ -538,13 +538,16 @@ sub gencert($$$$)
   my ($namelist,$extensions,$dirent,$username) = @_;
 
   my ($autodays) = $OPTIONS{'days'} == -1;
-  if ($autodays && $username eq "New CA")
+  if ($autodays)
   {
-    $OPTIONS{'days'} = 1825;
-  }
-  else
-  {
-    $OPTIONS{'days'} = 365;
+    if ($username eq "New CA")
+    {
+      $OPTIONS{'days'} = 1825;
+    }
+    else
+    {
+      $OPTIONS{'days'} = 365;
+    }
   }
 
   print STDERR "Generating $username certificate\n" unless ($OPTIONS{'quiet'});
