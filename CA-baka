@@ -61,7 +61,7 @@ my($USAGE) = "Usage: $0:
  [--md sha1|sha224|sha256|sha384|sha512]
 
  ## Public Key Algorithm
- [--pk rsa|ecc]
+ [--pk rsa|ecc|dsa]
 
  ## Initialize certificate authority.  Requires X509 subject fields set ##
  [--newca CN Email]
@@ -599,6 +599,10 @@ sub gencert($$$$)
   {
     openssl("ecparam -out '$ARCHIVE_DIR/$dirent.key' -name '$OPTIONS{'keylen'}' -genkey");
   }
+  elsif ($OPTIONS{'pk'} eq "dsa")
+  {
+    openssl("dsaparam -out '$ARCHIVE_DIR/$dirent.key' -genkey '$OPTIONS{'keylen'}'");
+  }
   else
   {
     die "Unimplemented algorithm";
@@ -747,6 +751,14 @@ if ($OPTIONS{'pk'} eq "rsa")
   }
   die "Inappropriate keylen\n$USAGE" if ($OPTIONS{'keylen'} < 1024);
 }
+elsif ($OPTIONS{'pk'} eq "dsa")
+{
+  if (!$OPTIONS{'keylen'})
+  {
+    $OPTIONS{'keylen'} = 2048;
+  }
+  die "Inappropriate keylen\n$USAGE" if ($OPTIONS{'keylen'} < 1024);
+}
 elsif ($OPTIONS{'pk'} eq "ecc")
 {
   if (!$OPTIONS{'keylen'})
@@ -762,7 +774,7 @@ elsif ($OPTIONS{'pk'} eq "ecc")
 }
 else
 {
-  die "Must specify either RSA or ECC public key algorithm.\n$USAGE";
+  die "Must specify either RSA, DSA, or ECC public key algorithm.\n$USAGE";
 }
 
 

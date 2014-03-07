@@ -93,3 +93,12 @@ test4:
 	openssl x509 -in test-workdir/ca.crt -text -noout | grep ecdsa
 	openssl x509 -in test-workdir/archive/server2.example.com/server.crt -text -noout | grep ecdsa
 	rm -rf test-workdir
+
+test5:
+	rm -rf test-workdir
+	./CA-baka --quiet --workdir test-workdir -C US --ST NY -L "New York" -O "Mythical NY Company" --newca ca.example.com "" --pk dsa
+	./CA-baka --quiet --workdir test-workdir --pk dsa --newserver server.example.com
+	./CA-baka --quiet --workdir test-workdir --verify test-workdir/archive/server.example.com/server.crt
+	./CA-baka --quiet --workdir test-workdir --pk dsa --keylen 4096 --newserver server2.example.com
+	openssl x509 -in test-workdir/ca.crt -text -noout | grep " dsaWith"
+	rm -rf test-workdir
