@@ -33,7 +33,7 @@ clean:
 
 
 
-test: test1 test2
+test: test1 test2 test3
 
 test1:
 	rm -rf test-workdir
@@ -73,4 +73,13 @@ test2:
 	./CA-baka --quiet --workdir test-workdir --verify test-workdir/archive/unwanted.example.com-revoked-*/client.crt && echo 1 || echo 0
 	@echo "Previous revoke test succeeded"
 	for f in test-workdir/archive/server.example.com/server.crt test-workdir/archive/client.example.com/client.crt test-workdir/archive/mail.example.com/mail.crt test-workdir/archive/coder.example.com/coder.crt; do ./CA-baka --quiet --workdir test-workdir --verify $$f; done
+	rm -rf test-workdir
+
+test3:
+	rm -rf test-workdir
+	./CA-baka --quiet --workdir test-workdir -C US --ST NY -L "New York" -O "Mythical NY Company" --newca ca.example.com "" --keylen 4096 --md sha512
+	./CA-baka --quiet --workdir test-workdir --keylen 4096 --md sha512 --newserver server.example.com
+	./CA-baka --quiet --workdir test-workdir --verify test-workdir/archive/server.example.com/server.crt
+	openssl x509 -in test-workdir/ca.crt -text -noout | grep sha512
+	openssl x509 -in test-workdir/ca.crt -text -noout | grep "4096 bit"
 	rm -rf test-workdir
