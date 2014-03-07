@@ -55,10 +55,13 @@ my($USAGE) = "Usage: $0:
  [--days number]
 
  ## Certificate key length.  Default 2048 bits ##
- [--keylen bitlen]
+ [--keylen bitlen|curvename]
 
  ## Hash Algorithm
  [--md sha1|sha224|sha256|sha384|sha512]
+
+ ## Public Key Algorithm
+ [--pk rsa|ecc]
 
  ## Initialize certificate authority.  Requires X509 subject fields set ##
  [--newca CN Email]
@@ -97,11 +100,12 @@ my (@NewServer,@NewClient,@NewMail,@NewCoder,@AltNames,@SubCA);
 
 $OPTIONS{'workdir'} = File::Spec->canonpath("$FindBin::Bin/../etc/CA");
 $OPTIONS{'days'} = -1;
-$OPTIONS{'keylen'} = 2048;
+$OPTIONS{'keylen'} = 0;
 $OPTIONS{'md'} = "sha1";
+$OPTIONS{'pk'} = "rsa";
 
 Getopt::Long::Configure("no_ignore_case", "no_auto_abbrev", "no_getopt_compat", "require_order");
-GetOptions(\%OPTIONS, 'workdir=s', 'C|country=s', 'ST|state=s', 'L|locality=s', 'O|organization=s', 'OU|organizationalunit=s', 'revoke=s', 'verify=s', 'newserver=s{1,2}'=>\@NewServer, 'altnames=s'=>\@AltNames, 'newclient=s{1,2}'=>\@NewClient, 'newmail=s{1,2}'=>\@NewMail, 'newcoder=s{1,2}'=>\@NewCoder, 'newca=s{2}'=>\@CAinfo, 'subca=s{3}'=>\@SubCA, 'renew', 'days=i', 'keylen=i', 'md=s', 'force', 'version', 'verbose|v+', 'quiet') || die $USAGE;
+GetOptions(\%OPTIONS, 'workdir=s', 'C|country=s', 'ST|state=s', 'L|locality=s', 'O|organization=s', 'OU|organizationalunit=s', 'revoke=s', 'verify=s', 'newserver=s{1,2}'=>\@NewServer, 'altnames=s'=>\@AltNames, 'newclient=s{1,2}'=>\@NewClient, 'newmail=s{1,2}'=>\@NewMail, 'newcoder=s{1,2}'=>\@NewCoder, 'newca=s{2}'=>\@CAinfo, 'subca=s{3}'=>\@SubCA, 'renew', 'days=i', 'keylen=s', 'md=s', 'pk=s', 'force', 'version', 'verbose|v+', 'quiet') || die $USAGE;
 
 ##################################################
 # Look for parse errors (easy with optional arguments)
@@ -587,7 +591,18 @@ sub gencert($$$$)
 
   # Generate certificate
   my ($mask) = umask(077);
-  openssl("genrsa -out '$ARCHIVE_DIR/$dirent.key' '$OPTIONS{'keylen'}'");
+  if ($OPTIONS{'pk'} eq "rsa")
+  {
+    openssl("genrsa -out '$ARCHIVE_DIR/$dirent.key' '$OPTIONS{'keylen'}'");
+  }
+  elsif ($OPTIONS{'pk'} eq "ecc")
+  {
+    openssl("ecparam -out '$ARCHIVE_DIR/$dirent.key' -name '$OPTIONS{'keylen'}' -genkey");
+  }
+  else
+  {
+    die "Unimplemented algorithm";
+  }
   umask($mask);
   openssl("req -config '$TMPCONF' -new -key '$ARCHIVE_DIR/$dirent.key' -out '$CA_DIR/tmp/$dirent.csr' -extensions $extensions");
 
@@ -720,6 +735,35 @@ sub genca($$$$$$$$$)
   run("keytool -import -storepass mypass -alias cacert -noprompt -trustcacerts -keystore '$ARCHIVE_DIR/ca.jks' -file '$ARCHIVE_DIR/ca.der'",1);
 }
 
+
+
+##################################################
+# Check public key algorithm for sanity
+if ($OPTIONS{'pk'} eq "rsa")
+{
+  if (!$OPTIONS{'keylen'})
+  {
+    $OPTIONS{'keylen'} = 2048;
+  }
+  die "Inappropriate keylen\n$USAGE" if ($OPTIONS{'keylen'} < 1024);
+}
+elsif ($OPTIONS{'pk'} eq "ecc")
+{
+  if (!$OPTIONS{'keylen'})
+  {
+    $OPTIONS{'keylen'} = "secp224k1";
+  }
+  my ($qkey) = quotemeta($OPTIONS{'keylen'});
+  my ($lines) = openssl("ecparam -list_curves", 1);
+  if ($lines !~ /^  $qkey\s*:/m)
+  {
+    die "Inappropriate key length/curve $OPTIONS{'keylen'}\n$lines\n$USAGE";
+  }
+}
+else
+{
+  die "Must specify either RSA or ECC public key algorithm.\n$USAGE";
+}
 
 
 # Support version display

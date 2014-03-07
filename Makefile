@@ -33,7 +33,7 @@ clean:
 
 
 
-test: test1 test2 test3
+test: test1 test2 test3 test4
 
 test1:
 	rm -rf test-workdir
@@ -82,4 +82,14 @@ test3:
 	./CA-baka --quiet --workdir test-workdir --verify test-workdir/archive/server.example.com/server.crt
 	openssl x509 -in test-workdir/ca.crt -text -noout | grep sha512
 	openssl x509 -in test-workdir/ca.crt -text -noout | grep "4096 bit"
+	rm -rf test-workdir
+
+test4:
+	rm -rf test-workdir
+	./CA-baka --quiet --workdir test-workdir -C US --ST NY -L "New York" -O "Mythical NY Company" --newca ca.example.com "" --pk ecc
+	./CA-baka --quiet --workdir test-workdir --pk ecc --newserver server.example.com
+	./CA-baka --quiet --workdir test-workdir --verify test-workdir/archive/server.example.com/server.crt
+	./CA-baka --quiet --workdir test-workdir --pk ecc --keylen prime256v1 --newserver server2.example.com
+	openssl x509 -in test-workdir/ca.crt -text -noout | grep ecdsa
+	openssl x509 -in test-workdir/archive/server2.example.com/server.crt -text -noout | grep ecdsa
 	rm -rf test-workdir
