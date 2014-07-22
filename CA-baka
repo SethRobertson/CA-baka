@@ -113,7 +113,8 @@ die "Neither CN nor Email nor Code Signers may start with leading -\n" if (grep(
 
 ##################################################
 # Look for illegal duplicative requests
-if (@NewServer > 2 || @NewClient > 2 || @NewMail > 2 || @NewCoder > 2 || @CAinfo > 2 || @SubCA > 2)
+
+if (@NewServer > 2 || @NewClient > 2 || @NewMail > 2 || @NewCoder > 2 || @CAinfo > 2 || @SubCA > 3)
 {
   die "Must specify a specific certificate type to generate exactly once.\n$USAGE";
 }
