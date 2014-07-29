@@ -59,7 +59,7 @@ test1:
 test2:
 	rm -rf test-workdir
 	@echo "Next command should generate errors"
-	./CA-baka --quiet --workdir test-workdir -C US --ST NY -L "New York" -O "Mythical NY Company" --newca ca.example.com "" --newserver server.example.com "" --newclient client.example.com "" --newmail mail.example.com "" --newcoder coder.example.com "" --newclient unwanted.example.com "" && echo 1 || echo 0
+	./CA-baka --quiet --workdir test-workdir -C US --ST NY -L "New York" -O "Mythical NY Company" --newca ca.example.com "" --newserver server.example.com "" --newclient client.example.com "" --newmail mail.example.com "" --newcoder coder.example.com "" --newclient unwanted.example.com "" && exit 1 || exit 0
 	@echo "Previous bad-options test succeeded"
 	./CA-baka --quiet --workdir test-workdir -C US --ST NY -L "New York" -O "Mythical NY Company" --newca ca.example.com "" --newserver server.example.com "" --newclient client.example.com "" --newmail mail.example.com "" --newcoder coder.example.com ""
 	./CA-baka --quiet --workdir test-workdir --newclient unwanted.example.com
@@ -70,7 +70,7 @@ test2:
 	@echo "Previous bad-options test succeeded"
 	./CA-baka --quiet --workdir test-workdir --revoke unwanted.example.com
 	@echo "Next command should generate errors"
-	./CA-baka --quiet --workdir test-workdir --verify test-workdir/archive/unwanted.example.com-revoked-*/client.crt && echo 1 || echo 0
+	./CA-baka --quiet --workdir test-workdir --verify test-workdir/archive/unwanted.example.com-revoked-*/client.crt && exit 1 || exit 0
 	@echo "Previous revoke test succeeded"
 	for f in test-workdir/archive/server.example.com/server.crt test-workdir/archive/client.example.com/client.crt test-workdir/archive/mail.example.com/mail.crt test-workdir/archive/coder.example.com/coder.crt; do ./CA-baka --quiet --workdir test-workdir --verify $$f; done
 	rm -rf test-workdir
