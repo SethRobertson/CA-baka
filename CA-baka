@@ -764,16 +764,23 @@ elsif ($OPTIONS{'pk'} eq "dsa")
 }
 elsif ($OPTIONS{'pk'} eq "ecc")
 {
+  sub check_curve($)
+  {
+    my ($qkey) = quotemeta($_[0]);
+    my ($lines) = openssl("ecparam -list_curves", 1);
+    $lines =~ /^  $qkey\s*:/m;
+  }
+
   if (!$OPTIONS{'keylen'})
   {
-    $OPTIONS{'keylen'} = "secp224k1";
+    foreach my $kl ("secp224k1", "secp384r1")
+    {
+      next unless check_curve($kl);
+      $OPTIONS{'keylen'} = $kl;
+      last;
+    }
   }
-  my ($qkey) = quotemeta($OPTIONS{'keylen'});
-  my ($lines) = openssl("ecparam -list_curves", 1);
-  if ($lines !~ /^  $qkey\s*:/m)
-  {
-    die "Inappropriate key length/curve $OPTIONS{'keylen'}\n$lines\n$USAGE";
-  }
+  die "Inappropriate key length/curve $OPTIONS{'keylen'}\n$USAGE" unless check_curve($OPTIONS{'keylen'});
 }
 else
 {
@@ -1179,10 +1186,13 @@ validate).  The corollary is that Certificate Authority Certificates
 should probably have a fairly long lifetime.  The corollary's corollary
 is that your should protect your CA key well.
 
-=item B<--keylen I<bitlen>>
+=item B<--keylen I<bitlen>|I<curvename>>
 
 Override the default key length of a certificate.  The default key
-length is 2048 bits.
+length is 2048 bits.  For ecc pk algorithms, the key length is used
+to communicate the curvename.
+
+`openssl ecparam -list_curves` shows you what curves are available.
 
 =item B<--renew>
 
