@@ -190,15 +190,12 @@ sub gensslconf($$$$$$)
   my ($extensions,$cn,$email,$altnames,$constraints,$base) = @_;
 
   my ($san_line) = "";
-  $san_line = qq^subjectAltName			= \@alt_name_section\n^ if ($altnames && @$altnames);
+  $san_line = qq^subjectAltName		= \@alt_name_section\n^ if ($altnames && @$altnames);
 
   my ($nc_line) = "";
   if ($constraints && @$constraints)
   {
-    foreach my $nc (@$constraints)
-    {
-      $nc_line .=  qq^nameConstraints		= critical, $nc\n^;
-    }
+    $nc_line =  qq^nameConstraints		= critical, \@constrained_trees\n^;
   }
 
 
@@ -318,6 +315,22 @@ EOF
       printf W (qq^%s.%d = "%s"\n^,$type,++$type{$type},$value);
     }
     print W "\n"
+  }
+
+  if ($constraints && @$constraints)
+  {
+    my %cntr;
+    print W "[constrained_trees]\n";
+    foreach my $nc (@$constraints)
+    {
+      if (!($nc =~ /^([^;]+);([^:]+):(.*)$/))
+      {
+	die "Name constraint $nc not in correct format\n";
+      }
+      my ($decision,$type,$value) = ($1,$2,$3);
+      my $cntr = ++$cntr{$type};
+      print W "$decision;$type.$cntr=$value\n";
+    }
   }
 
   close(W);

@@ -33,7 +33,7 @@ clean:
 
 
 
-test: test1 test2 test3 test4 test5 test6 testN
+test: test1 test2 test3 test4 test5 test6 test7 testN
 
 test1:
 	rm -rf test-workdir
@@ -109,6 +109,21 @@ test6:
 	./CA-baka --quiet --workdir test-workdir --altnames DNS:server.example.com --newserver server.example.com
 	./CA-baka --quiet --workdir test-workdir --altnames DNS:badserver.example.org --newserver badserver.example.org
 	./CA-baka --quiet --workdir test-workdir --verify test-workdir/archive/server.example.com/server.crt
+	@echo The following test should fail as out-of-permitted-subtree
+	./CA-baka --quiet --workdir test-workdir --verify test-workdir/archive/badserver.example.org/server.crt && exit 1 || echo 0
+	rm -rf test-workdir
+
+test7:
+	rm -rf test-workdir
+	./CA-baka --quiet --workdir test-workdir -C US --ST NY -L "New York" -O "Mythical NY Company" --newca ca.example.com "" --constraints "permitted;DNS:example.com" --constraints "permitted;DNS:example2.com" --constraints "excluded;DNS:x.example.com"
+	./CA-baka --quiet --workdir test-workdir --altnames DNS:server.example.com --newserver server.example.com
+	./CA-baka --quiet --workdir test-workdir --altnames DNS:server.x.example2.com --newserver server.x.example2.com
+	./CA-baka --quiet --workdir test-workdir --altnames DNS:x.example.com --newserver x.example.com
+	./CA-baka --quiet --workdir test-workdir --altnames DNS:badserver.example.org --newserver badserver.example.org
+	./CA-baka --quiet --workdir test-workdir --verify test-workdir/archive/server.example.com/server.crt
+	./CA-baka --quiet --workdir test-workdir --verify test-workdir/archive/server.x.example2.com/server.crt
+	@echo The following test should fail as out-of-permitted-subtree
+	./CA-baka --quiet --workdir test-workdir --verify test-workdir/archive/x.example.com/server.crt && exit 1 || echo 0
 	@echo The following test should fail as out-of-permitted-subtree
 	./CA-baka --quiet --workdir test-workdir --verify test-workdir/archive/badserver.example.org/server.crt && exit 1 || echo 0
 	rm -rf test-workdir
