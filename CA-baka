@@ -82,8 +82,14 @@ my($USAGE) = "Usage: $0:
  [--newcoder CN [Email]]
 
  ## Specify certificate alternative names.  Only one cert can be generated ##
- ### Valid types are email, URI, DNS, and IP ###
+ ### Examples: URL:http://w3.example.com IP:127.0.0.1 DNS:s2.example.com email:root\@example.com
  [--altnames TYPE:value]...
+
+ ## Specify certificate name constraints, typically on ca or subca. ##
+ ### Examples: permitted;URL:http://.example.com
+ ### permitted;IP:127.0.0.0/255.0.0.0 permitted;DNS:.example.com
+ ### permitted;email:.example.com excluded;email:.com
+ [--constraints <permitted|excluded>;TYPE:value]...
 
  ## Revoke an existing certificate.  ##
  [--revoke CN]
@@ -96,7 +102,7 @@ my($USAGE) = "Usage: $0:
 
  [--force] [--version] [--verbose]+ [-v]+ [--quiet] \n";
 my(%OPTIONS,@CAinfo);
-my (@NewServer,@NewClient,@NewMail,@NewCoder,@AltNames,@SubCA);
+my (@NewServer,@NewClient,@NewMail,@NewCoder,@AltNames,@NameConstraints,@SubCA);
 
 $OPTIONS{'workdir'} = File::Spec->canonpath("$FindBin::Bin/../etc/CA");
 $OPTIONS{'days'} = -1;
@@ -105,7 +111,7 @@ $OPTIONS{'md'} = "sha1";
 $OPTIONS{'pk'} = "rsa";
 
 Getopt::Long::Configure("no_ignore_case", "no_auto_abbrev", "no_getopt_compat", "require_order");
-GetOptions(\%OPTIONS, 'workdir=s', 'C|country=s', 'ST|state=s', 'L|locality=s', 'O|organization=s', 'OU|organizationalunit=s', 'revoke=s', 'verify=s', 'newserver=s{1,2}'=>\@NewServer, 'altnames=s'=>\@AltNames, 'newclient=s{1,2}'=>\@NewClient, 'newmail=s{1,2}'=>\@NewMail, 'newcoder=s{1,2}'=>\@NewCoder, 'newca=s{2}'=>\@CAinfo, 'subca=s{3}'=>\@SubCA, 'renew', 'days=i', 'keylen=s', 'md=s', 'pk=s', 'force', 'version', 'verbose|v+', 'quiet') || die $USAGE;
+GetOptions(\%OPTIONS, 'workdir=s', 'C|country=s', 'ST|state=s', 'L|locality=s', 'O|organization=s', 'OU|organizationalunit=s', 'revoke=s', 'verify=s', 'newserver=s{1,2}'=>\@NewServer, 'altnames=s'=>\@AltNames, 'constraints=s'=>\@NameConstraints, 'newclient=s{1,2}'=>\@NewClient, 'newmail=s{1,2}'=>\@NewMail, 'newcoder=s{1,2}'=>\@NewCoder, 'newca=s{2}'=>\@CAinfo, 'subca=s{3}'=>\@SubCA, 'renew', 'days=i', 'keylen=s', 'md=s', 'pk=s', 'force', 'version', 'verbose|v+', 'quiet') || die $USAGE;
 
 ##################################################
 # Look for parse errors (easy with optional arguments)
@@ -179,12 +185,23 @@ sub genserial()
 #
 # Make ssl configuration for this request
 #
-sub gensslconf($$$$$)
+sub gensslconf($$$$$$)
 {
-  my ($extensions,$cn,$email,$altnames,$base) = @_;
+  my ($extensions,$cn,$email,$altnames,$constraints,$base) = @_;
 
   my ($san_line) = "";
-  $san_line = qq^subjectAltName	= \@alt_name_section\n^ if ($altnames && @$altnames);
+  $san_line = qq^subjectAltName			= \@alt_name_section\n^ if ($altnames && @$altnames);
+
+  my ($nc_line) = "";
+  if ($constraints && @$constraints)
+  {
+    foreach my $nc (@$constraints)
+    {
+      $nc_line .=  qq^nameConstraints		= critical, $nc\n^;
+    }
+  }
+
+
 
   # Consider locking against multiple updaters, see genserial for example
   open(W,">",$TMPCONF) || die "Cannot open temporary ssl configuration file $TMPCONF: $!";
@@ -214,14 +231,14 @@ subjectKeyIdentifier	= hash
 authorityKeyIdentifier	= keyid:always,issuer:always
 basicConstraints	= critical, CA:true
 keyUsage		= critical, digitalSignature, keyCertSign, cRLSign
-$san_line
+$san_line$nc_line
 
 [ sub_ca ]
 subjectKeyIdentifier	= hash
 authorityKeyIdentifier	= keyid:always,issuer:always
 basicConstraints	= critical, CA:true, pathlen:0
 keyUsage		= critical, digitalSignature, keyCertSign, cRLSign
-$san_line
+$san_line$nc_line
 
 [ server ]
 basicConstraints	= critical, CA:FALSE
@@ -453,7 +470,7 @@ sub revoke($$)
   }
 
   genserial();
-  gensslconf($extension,$cn,undef,undef,$CA_DIR);
+  gensslconf($extension,$cn,undef,undef,undef,$CA_DIR);
 
   die "Cannot find certificate to revoke in standard archive location\n" if (!-f "$dir/$type.crt");
 
@@ -531,6 +548,24 @@ sub validate_altnames(@)
 
 ######################################################################
 #
+# Validate contraint names
+#
+sub validate_constraints(@)
+{
+  foreach my $saname (@_)
+  {
+    my ($decision,$other) = split(/;/,$saname,2);
+    my ($type,$value) = split(/:/,$other,2);
+    die "Invalid contraint decision type $decision\n" if ($decision !~ /^(permitted|excluded)$/);
+    die "Invalid contraint name type $type\n" if ($type !~ /^(email|IP|DNS|URI|dirName)$/);
+    sane_name($value,1);
+  }
+}
+
+
+
+######################################################################
+#
 # Generate certificates
 #
 sub gencert($$$$)
@@ -585,7 +620,7 @@ sub gencert($$$$)
   genserial();
 
   # Prepare configuration file for generation
-  gensslconf($extensions,$namelist->[0],$namelist->[1],\@AltNames,$CA_DIR);
+  gensslconf($extensions,$namelist->[0],$namelist->[1],\@AltNames,\@NameConstraints,$CA_DIR);
 
   # Prepare directory to dump all of this information
   $ARCHIVE_DIR="$ARCHIVE_BASE/$namelist->[0]";
@@ -718,7 +753,7 @@ sub genca($$$$$$$$$)
     $TRUSTED_DIR="$CA_DIR/trusted-certs";
 
     # Regenerate SSL configuration with new directories
-    gensslconf($extension,$CA_CN,$CA_EM,\@AltNames,$CA_DIR);
+    gensslconf($extension,$CA_CN,$CA_EM,\@AltNames,\@NameConstraints,$CA_DIR);
     hash("$CA_PARENT/ca.crt","x509",$TRUSTED_DIR);
 
     # Link parent CRL into place
@@ -835,6 +870,14 @@ if ($opensslversion =~ /\b0\.9\.[^9]/)
 if (@AltNames)
 {
   validate_altnames(@AltNames);
+}
+
+
+##################################################
+# Check that subject alternative names are sane
+if (@NameConstraints)
+{
+  validate_constraints(@NameConstraints);
 }
 
 ##################################################
@@ -962,6 +1005,7 @@ S< [--newclient CN [Email]]>
 S< [--newmail CN [Email]]>
 S< [--newcoder CN [Email]]>
 S< [--altnames TYPE:value]...>
+S< [--constraints METHOD;TYPE:value]...>
 S< [--revoke CN]>
 S< [--renew]>
 S< [--verify filename]>
@@ -1142,11 +1186,11 @@ data will be available in the work directory's archive subdirectory,
 in a further subdirectory named by the CN.  Distribution of this
 material is left as an exercise to the reader.
 
-=item B<--altname I<TYPE:value>>
+=item B<--altnames I<TYPE:value>>
 
 Request that the certificate being generated on this execution be
 given the listed subject alternate name (SAN).  You may only generate
-one certificate per execution if you have C<--altname> specified.
+one certificate per execution if you have C<--altnames> specified.
 This can be used to provide, eg, alternate hostnames for HTTPS server
 certificates (for multisite hosted domains) or alternate email address
 for mail certificates.
@@ -1155,13 +1199,43 @@ Valid TYPEs are "email", "URI", "DNS", and "IP".  Typically "DNS" and
 "IP" are used for server certificates, and "email" is used for mail
 certificates.
 
-When using C<--altname> you B<must> specify the data (CN, email) you
+When using C<--altnames> you B<must> specify the data (CN, email) you
 might have expected to be authories as part of the primary subject
 name as an alternate.  So if you set the CN to host1.example.com, you
 must also provide DNS:host1.example.com as an SAN).
 
 You must specify this argument multiple times, one per SAN you are
 attempting provide.
+
+=item B<--constraints I<METHOD;TYPE:value>>
+
+Request that the certificate being generated on this execution be
+given the listed name constraints.  This is typically done for CA
+and sub-CA certificates to limit the scope of what damage a compromised
+certificate might do.
+
+Valid METHODs are "permitted" and "excluded".
+
+Valid TYPEs are "email", "URI", "DNS", and "IP".  Typically "DNS" and
+"IP" are used for server certificates, and "email" is used for mail
+certificates.
+
+Name contraints are not fully supported by all ssl implementations,
+and indeed OpenSSL seems to only really support it if there is a
+subject alternative name in the nominally constrainted certificate
+absent specific investigation by the client app.  You should test your
+clients and servers with nameConstraints before you put them in
+production.
+
+You must specify this argument multiple times, one per constraint you
+are attempting provide.
+
+permitted;URL:http://.example.com
+permitted;IP:127.0.0.0/255.0.0.0
+permitted;DNS:.example.com
+permitted;email:.example.com
+excluded;email:.com
+
 
 =item B<--revoke I<CN>>
 
@@ -1248,18 +1322,18 @@ A typical usage goes something like:
   CA-baka --workdir /etc/CA -C US --ST NY -L "New York" -O "Mythical NY Company" --newca ca.example.com ""
 
   # Create web server certificate
-  CA-baka --workdir /etc/CA --newserver www.example.com webmaster@example.com
+  CA-baka --workdir /etc/CA --newserver www.example.com webmaster\@example.com
 
   # Create mail certificate plus all common aliases
-  CA-baka --workdir /etc/CA --newserver mail.example.com postmaster@example.com --altname DNS:mail.example.com --altname DNS:pop.example.com --altname DNS:imap.example.com --altname:smtp.example.com
+  CA-baka --workdir /etc/CA --newserver mail.example.com postmaster\@example.com --altnames DNS:mail.example.com --altnames DNS:pop.example.com --altnames DNS:imap.example.com --altnames:smtp.example.com
 
   # Create VPN server certificate
   CA-baka --workdir /etc/CA --newserver vpn.example.com ""
 
   # Create specific user certificate for VPN
-  CA-baka --workdir /etc/CA --OU VPN --newclient "Joe Luser" joe@example.com
-  CA-baka --workdir /etc/CA --OU VPN --newclient "Bob 6pack" bob@example.com
-  CA-baka --workdir /etc/CA --OU VPN --newclient "Martha Stewardess" mstew@example.com
+  CA-baka --workdir /etc/CA --OU VPN --newclient "Joe Luser" joe\@example.com
+  CA-baka --workdir /etc/CA --OU VPN --newclient "Bob 6pack" bob\@example.com
+  CA-baka --workdir /etc/CA --OU VPN --newclient "Martha Stewardess" mstew\@example.com
 
   # Revoke bad certificate
   CA-baka --workdir /etc/CA --OU VPN --revoke "Martha Stewardess"
