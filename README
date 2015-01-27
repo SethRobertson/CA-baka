@@ -9,8 +9,9 @@ SYNOPSIS
     [--organizationalunit|--OU department] [--days number] [--keylen bitlen]
     [--newca CN Email] [--subca CN Email NewWorkDir] [--newserver CN
     [Email]] [--newclient CN [Email]] [--newmail CN [Email]] [--newcoder CN
-    [Email]] [--altnames TYPE:value]... [--revoke CN] [--renew] [--verify
-    filename] [--force] [--verbose]+ [-v]+ [--quiet]
+    [Email]] [--altnames TYPE:value]... [--constraints METHOD;TYPE:value]...
+    [--revoke CN] [--renew] [--verify filename] [--force] [--verbose]+ [-v]+
+    [--quiet]
 
 DESCRIPTION
     This Certificate Authority is designed for use by a skilled, trusted
@@ -166,10 +167,10 @@ OPTIONS
         in a further subdirectory named by the CN. Distribution of this
         material is left as an exercise to the reader.
 
-    --altname *TYPE:value*
+    --altnames *TYPE:value*
         Request that the certificate being generated on this execution be
         given the listed subject alternate name (SAN). You may only generate
-        one certificate per execution if you have "--altname" specified.
+        one certificate per execution if you have "--altnames" specified.
         This can be used to provide, eg, alternate hostnames for HTTPS
         server certificates (for multisite hosted domains) or alternate
         email address for mail certificates.
@@ -178,13 +179,39 @@ OPTIONS
         "IP" are used for server certificates, and "email" is used for mail
         certificates.
 
-        When using "--altname" you must specify the data (CN, email) you
+        When using "--altnames" you must specify the data (CN, email) you
         might have expected to be authories as part of the primary subject
         name as an alternate. So if you set the CN to host1.example.com, you
         must also provide DNS:host1.example.com as an SAN).
 
         You must specify this argument multiple times, one per SAN you are
         attempting provide.
+
+    --constraints *METHOD;TYPE:value*
+        Request that the certificate being generated on this execution be
+        given the listed name constraints. This is typically done for CA and
+        sub-CA certificates to limit the scope of what damage a compromised
+        certificate might do.
+
+        Valid METHODs are "permitted" and "excluded".
+
+        Valid TYPEs are "email", "URI", "DNS", and "IP". Typically "DNS" and
+        "IP" are used for server certificates, and "email" is used for mail
+        certificates.
+
+        Name contraints are not fully supported by all ssl implementations,
+        and indeed OpenSSL seems to only really support it if there is a
+        subject alternative name in the nominally constrainted certificate
+        absent specific investigation by the client app. You should test
+        your clients and servers with nameConstraints before you put them in
+        production.
+
+        You must specify this argument multiple times, one per constraint
+        you are attempting provide.
+
+        permitted;URL:http://.example.com permitted;IP:127.0.0.0/255.0.0.0
+        permitted;DNS:.example.com permitted;email:.example.com
+        excluded;email:.com
 
     --revoke *CN*
         Specify a desire to revoke a currently valid certificate. The
@@ -207,9 +234,12 @@ OPTIONS
         Certificates should probably have a fairly long lifetime. The
         corollary's corollary is that your should protect your CA key well.
 
-    --keylen *bitlen*
+    --keylen *bitlen*|*curvename*
         Override the default key length of a certificate. The default key
-        length is 2048 bits.
+        length is 2048 bits. For ecc pk algorithms, the key length is used
+        to communicate the curvename.
+
+        `openssl ecparam -list_curves` shows you what curves are available.
 
     --renew
         Normally you are forbidden to generate a certificate for a CN you
@@ -255,18 +285,18 @@ EXAMPLES
       CA-baka --workdir /etc/CA -C US --ST NY -L "New York" -O "Mythical NY Company" --newca ca.example.com ""
 
       # Create web server certificate
-      CA-baka --workdir /etc/CA --newserver www.example.com webmaster@example.com
+      CA-baka --workdir /etc/CA --newserver www.example.com webmaster\@example.com
 
       # Create mail certificate plus all common aliases
-      CA-baka --workdir /etc/CA --newserver mail.example.com postmaster@example.com --altname DNS:mail.example.com --altname DNS:pop.example.com --altname DNS:imap.example.com --altname:smtp.example.com
+      CA-baka --workdir /etc/CA --newserver mail.example.com postmaster\@example.com --altnames DNS:mail.example.com --altnames DNS:pop.example.com --altnames DNS:imap.example.com --altnames:smtp.example.com
 
       # Create VPN server certificate
       CA-baka --workdir /etc/CA --newserver vpn.example.com ""
 
       # Create specific user certificate for VPN
-      CA-baka --workdir /etc/CA --OU VPN --newclient "Joe Luser" joe@example.com
-      CA-baka --workdir /etc/CA --OU VPN --newclient "Bob 6pack" bob@example.com
-      CA-baka --workdir /etc/CA --OU VPN --newclient "Martha Stewardess" mstew@example.com
+      CA-baka --workdir /etc/CA --OU VPN --newclient "Joe Luser" joe\@example.com
+      CA-baka --workdir /etc/CA --OU VPN --newclient "Bob 6pack" bob\@example.com
+      CA-baka --workdir /etc/CA --OU VPN --newclient "Martha Stewardess" mstew\@example.com
 
       # Revoke bad certificate
       CA-baka --workdir /etc/CA --OU VPN --revoke "Martha Stewardess"
