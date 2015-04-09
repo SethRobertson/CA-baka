@@ -288,7 +288,7 @@ EXAMPLES
       CA-baka --workdir /etc/CA --newserver www.example.com webmaster\@example.com
 
       # Create mail certificate plus all common aliases
-      CA-baka --workdir /etc/CA --newserver mail.example.com postmaster\@example.com --altnames DNS:mail.example.com --altnames DNS:pop.example.com --altnames DNS:imap.example.com --altnames:smtp.example.com
+      CA-baka --workdir /etc/CA --newserver mail.example.com postmaster\@example.com --altnames DNS:mail.example.com --altnames DNS:pop.example.com --altnames DNS:imap.example.com --altnames DNS:smtp.example.com
 
       # Create VPN server certificate
       CA-baka --workdir /etc/CA --newserver vpn.example.com ""
