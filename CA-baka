@@ -1351,6 +1351,12 @@ A typical usage goes something like:
   # Revoke bad certificate
   CA-baka --workdir /etc/CA --OU VPN --revoke "Martha Stewardess"
 
+  # Issue a certificate with non-default hash and longer rsa key
+  CA-baka --md sha512 --keylen 8192 --workdir /etc/CA --OU VPN --newclient "Paranoid Pete" pete\@example.com
+
+  # Issue a certificate with a different public key algorithms
+  CA-baka --md sha512 --pk ecc --workdir /etc/CA --OU VPN --newclient "Eccentric Eliptical Chuck" chuck\@example.com
+
 
 =head1 FILES/DIRECTORIES
 
@@ -1443,10 +1449,16 @@ client certificate for the same CN.
 Most likely there are other best practices by CAs which are not being
 followed.
 
+=head2 Crypto modification caching
+
+The public key algorithm, hash length, and key length/curvename is not
+cached when you create the CA and it should be.  Any crypto changes
+will only apply to whatever certificate you set them on and all
+furture certs will be back to default crypto.
 
 =head1 COPYRIGHT
 
-Copyright ⓒ 2012 BAKA - See LICENSE.TXT
+Copyright ⓒ 2012-2015 BAKA - See LICENSE.TXT
 
 If you think of it as a GPL2 without the ability to upgrade or the
 linkage restriction, you will not go far wrong.

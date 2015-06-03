@@ -288,7 +288,7 @@ EXAMPLES
       CA-baka --workdir /etc/CA --newserver www.example.com webmaster\@example.com
 
       # Create mail certificate plus all common aliases
-      CA-baka --workdir /etc/CA --newserver mail.example.com postmaster\@example.com --altnames DNS:mail.example.com --altnames DNS:pop.example.com --altnames DNS:imap.example.com --altnames DNS:smtp.example.com
+      CA-baka --workdir /etc/CA --newserver mail.example.com postmaster\@example.com --altnames DNS:mail.example.com --altnames DNS:pop.example.com --altnames DNS:imap.example.com --altnames:smtp.example.com
 
       # Create VPN server certificate
       CA-baka --workdir /etc/CA --newserver vpn.example.com ""
@@ -300,6 +300,12 @@ EXAMPLES
 
       # Revoke bad certificate
       CA-baka --workdir /etc/CA --OU VPN --revoke "Martha Stewardess"
+
+      # Issue a certificate with non-default hash and longer rsa key
+      CA-baka --md sha512 --keylen 8192 --workdir /etc/CA --OU VPN --newclient "Paranoid Pete" pete\@example.com
+
+      # Issue a certificate with a different public key algorithms
+      CA-baka --md sha512 --pk ecc --workdir /etc/CA --OU VPN --newclient "Eccentric Eliptical Chuck" chuck\@example.com
 
 FILES/DIRECTORIES
     Within the workdirectory, you will see
@@ -371,8 +377,14 @@ BUGS
     Most likely there are other best practices by CAs which are not being
     followed.
 
+  Crypto modification caching
+    The public key algorithm, hash length, and key length/curvename is not
+    cached when you create the CA and it should be. Any crypto changes will
+    only apply to whatever certificate you set them on and all furture certs
+    will be back to default crypto.
+
 COPYRIGHT
-    Copyright ⓒ 2012 BAKA - See LICENSE.TXT
+    Copyright ⓒ 2012-2015 BAKA - See LICENSE.TXT
 
     If you think of it as a GPL2 without the ability to upgrade or the
     linkage restriction, you will not go far wrong.
