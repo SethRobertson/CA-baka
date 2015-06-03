@@ -58,7 +58,7 @@ my($USAGE) = "Usage: $0:
  [--keylen bitlen|curvename]
 
  ## Hash Algorithm
- [--md sha1|sha224|sha256|sha384|sha512]
+ [--md sha256|sha224|sha384|sha512|sha1]
 
  ## Public Key Algorithm
  [--pk rsa|ecc|dsa]
@@ -107,7 +107,7 @@ my (@NewServer,@NewClient,@NewMail,@NewCoder,@AltNames,@NameConstraints,@SubCA);
 $OPTIONS{'workdir'} = File::Spec->canonpath("$FindBin::Bin/../etc/CA");
 $OPTIONS{'days'} = -1;
 $OPTIONS{'keylen'} = 0;
-$OPTIONS{'md'} = "sha1";
+$OPTIONS{'md'} = "sha256";
 $OPTIONS{'pk'} = "rsa";
 
 Getopt::Long::Configure("no_ignore_case", "no_auto_abbrev", "no_getopt_compat", "require_order");
@@ -1011,6 +1011,8 @@ S< [--country|--C country] [--state|--ST state] [--locality|--L city]>
 S< [--organization|--O company] [--organizationalunit|--OU department]>
 S< [--days number]>
 S< [--keylen bitlen]>
+S< [--md sha256|sha224|sha384|sha512|sha1]>
+S< [--pk rsa|ecc|dsa]>
 S< [--newca CN Email]>
 S< [--subca CN Email NewWorkDir]>
 S< [--newserver CN [Email]]>
@@ -1273,11 +1275,25 @@ validate).  The corollary is that Certificate Authority Certificates
 should probably have a fairly long lifetime.  The corollary's corollary
 is that your should protect your CA key well.
 
+=item B<--md I<hash algorthms>>
+
+Override the default hash algorithm for a certificate.  The default
+algorithm is currently sha256.  See `openssl dgst -h` to see a list of
+supported hash algorithms.
+
+=item B<--pk I<public key algorthm>>
+
+Override the default public key algorithm for a certificate.  The
+default algorithm is currently RSA.  Use `CA-baka --pk list` to see a
+list of supported public key algorithms.
+
 =item B<--keylen I<bitlen>|I<curvename>>
 
 Override the default key length of a certificate.  The default key
-length is 2048 bits.  For ecc pk algorithms, the key length is used
-to communicate the curvename.
+length for RSA and DSA is 2048 bits, for ECC the default curve is
+secp224k1, secp384r1 (in order of preference, not that I am ecstatic
+with either curve).  For ecc pk algorithms, the key length is used to
+communicate the curvename.
 
 `openssl ecparam -list_curves` shows you what curves are available.
 

@@ -7,9 +7,10 @@ SYNOPSIS
     CA-baka [--workdir directory] [--country|--C country] [--state|--ST
     state] [--locality|--L city] [--organization|--O company]
     [--organizationalunit|--OU department] [--days number] [--keylen bitlen]
-    [--newca CN Email] [--subca CN Email NewWorkDir] [--newserver CN
-    [Email]] [--newclient CN [Email]] [--newmail CN [Email]] [--newcoder CN
-    [Email]] [--altnames TYPE:value]... [--constraints METHOD;TYPE:value]...
+    [--md sha256|sha224|sha384|sha512|sha1] [--pk rsa|ecc|dsa] [--newca CN
+    Email] [--subca CN Email NewWorkDir] [--newserver CN [Email]]
+    [--newclient CN [Email]] [--newmail CN [Email]] [--newcoder CN [Email]]
+    [--altnames TYPE:value]... [--constraints METHOD;TYPE:value]...
     [--revoke CN] [--renew] [--verify filename] [--force] [--verbose]+ [-v]+
     [--quiet]
 
@@ -234,10 +235,22 @@ OPTIONS
         Certificates should probably have a fairly long lifetime. The
         corollary's corollary is that your should protect your CA key well.
 
+    --md *hash algorthms*
+        Override the default hash algorithm for a certificate. The default
+        algorithm is currently sha256. See `openssl dgst -h` to see a list
+        of supported hash algorithms.
+
+    --pk *public key algorthm*
+        Override the default public key algorithm for a certificate. The
+        default algorithm is currently RSA. Use `CA-baka --pk list` to see a
+        list of supported public key algorithms.
+
     --keylen *bitlen*|*curvename*
         Override the default key length of a certificate. The default key
-        length is 2048 bits. For ecc pk algorithms, the key length is used
-        to communicate the curvename.
+        length for RSA and DSA is 2048 bits, for ECC the default curve is
+        secp224k1, secp384r1 (in order of preference, not that I am ecstatic
+        with either curve). For ecc pk algorithms, the key length is used to
+        communicate the curvename.
 
         `openssl ecparam -list_curves` shows you what curves are available.
 
