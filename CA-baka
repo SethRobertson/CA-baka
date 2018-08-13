@@ -111,7 +111,7 @@ $OPTIONS{'md'} = "sha256";
 $OPTIONS{'pk'} = "rsa";
 
 Getopt::Long::Configure("no_ignore_case", "no_auto_abbrev", "no_getopt_compat", "require_order");
-GetOptions(\%OPTIONS, 'workdir=s', 'C|country=s', 'ST|state=s', 'L|locality=s', 'O|organization=s', 'OU|organizationalunit=s', 'revoke=s', 'verify=s', 'newserver=s{1,2}'=>\@NewServer, 'altnames=s'=>\@AltNames, 'constraints=s'=>\@NameConstraints, 'newclient=s{1,2}'=>\@NewClient, 'newmail=s{1,2}'=>\@NewMail, 'newcoder=s{1,2}'=>\@NewCoder, 'newca=s{2}'=>\@CAinfo, 'subca=s{3}'=>\@SubCA, 'renew', 'days=i', 'keylen=s', 'md=s', 'pk=s', 'force', 'version', 'verbose|v+', 'quiet') || die $USAGE;
+GetOptions(\%OPTIONS, 'workdir=s', 'C|country=s', 'ST|state=s', 'L|locality=s', 'O|organization=s', 'OU|organizationalunit=s', 'revoke=s', 'verify=s', 'newserver=s{1,2}'=>\@NewServer, 'altnames=s'=>\@AltNames, 'constraints=s'=>\@NameConstraints, 'newclient=s{1,2}'=>\@NewClient, 'newmail=s{1,2}'=>\@NewMail, 'newcoder=s{1,2}'=>\@NewCoder, 'newca=s{2}'=>\@CAinfo, 'subca=s{3}'=>\@SubCA, 'renew', 'days=f', 'keylen=s', 'md=s', 'pk=s', 'force', 'version', 'verbose|v+', 'quiet') || die $USAGE;
 
 ##################################################
 # Look for parse errors (easy with optional arguments)
@@ -487,8 +487,8 @@ sub revoke($$)
 
   die "Cannot find certificate to revoke in standard archive location\n" if (!-f "$dir/$type.crt");
 
-  openssl("ca -revoke '$dir/$type.crt' -config '$TMPCONF'");
-  openssl("ca -gencrl -out '$CA_CRL' -config '$TMPCONF'");
+  openssl("ca -batch -revoke '$dir/$type.crt' -config '$TMPCONF'");
+  openssl("ca -batch -gencrl -out '$CA_CRL' -config '$TMPCONF'");
   hash($CA_CRL,"crl",$TRUSTED_DIR);
   open(X,">","$dir/REVOKED");
   print X "Certificate revoked.\n";
@@ -600,6 +600,8 @@ sub gencert($$$$)
 
   print STDERR "Generating $username certificate\n" unless ($OPTIONS{'quiet'});
 
+  my ($enddate);
+
   if (!$OPTIONS{'force'} && -f $CA_CRT)
   {
     # Check to make sure requested lifetime is not longer than
@@ -622,8 +624,11 @@ sub gencert($$$$)
     my ($caexptime) = timegm($5,$4,$3,$2,$camo,$6);
     my ($newexptime) = time + 86400*$OPTIONS{'days'};
 
-    die "\nERROR: Requested expiration --days $OPTIONS{'days'} greater than CA expiration of:\n  ${caexp}  Use --force to override\n"
-      if ($newexptime > $caexptime);
+    if ($newexptime > $caexptime)
+    {
+      warn "\nERROR: Requested expiration --days $OPTIONS{'days'} greater than CA expiration of:\n  ${caexp}  Use --force to override, switching to CA expiration date.\n";
+      $enddate = sprintf("%04d%02d%02d%02d%02d%02dZ",$6,$camo+1,$2,$3,$4,$5);
+    }
   }
 
   # Validate for sanity
@@ -659,7 +664,7 @@ sub gencert($$$$)
     die "Unimplemented algorithm";
   }
   umask($mask);
-  openssl("req -config '$TMPCONF' -new -key '$ARCHIVE_DIR/$dirent.key' -out '$CA_DIR/tmp/$dirent.csr' -extensions $extensions");
+  openssl("req -batch -config '$TMPCONF' -new -key '$ARCHIVE_DIR/$dirent.key' -out '$CA_DIR/tmp/$dirent.csr' -extensions $extensions");
 
   my ($other) = "";
   if ($extensions eq "v3_ca" && ! -f $CA_CRT)
@@ -668,7 +673,19 @@ sub gencert($$$$)
     link("$ARCHIVE_DIR/$dirent.key",$CA_KEY) || die "Cannot move $dirent.key into position: $!\n";
   }
 
-  openssl("ca -batch -startdate $StartDate -config '$TMPCONF' $other -key '$CA_KEY' -out '$ARCHIVE_DIR/$dirent.crt' -extensions $extensions -days '$OPTIONS{'days'}' -infiles '$CA_DIR/tmp/$dirent.csr'");
+  my ($openssl_cmd) = "ca -batch -startdate $StartDate -config '$TMPCONF' $other -key '$CA_KEY' -out '$ARCHIVE_DIR/$dirent.crt' -extensions $extensions";
+  if ($enddate)
+  {
+    $openssl_cmd .= " -enddate $enddate";
+  }
+  else
+  {
+    $openssl_cmd .= " -days '$OPTIONS{'days'}'";
+  }
+  # Must be last argument
+  $openssl_cmd .= " -infiles '$CA_DIR/tmp/$dirent.csr'";
+  openssl($openssl_cmd);
+
 
   if ($extensions !~ /_ca$/)
   {
@@ -778,7 +795,7 @@ sub genca($$$$$$$$$)
   my ($CA_CRL) = "$CA_DIR/ca.crl";
 
   # Prepare for certificate revocation
-  openssl("ca -gencrl -out '$CA_CRL' -config '$TMPCONF'");
+  openssl("ca -batch -gencrl -out '$CA_CRL' -config '$TMPCONF'");
   hash($CA_CRL,"crl",$TRUSTED_DIR);
 
   my ($CA_CRT) = "$ARCHIVE_DIR/ca.crt";
