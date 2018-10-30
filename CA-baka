@@ -392,9 +392,9 @@ sub hash($$$)
 #
 # Validate subject names for sanity, attacks, etc
 #
-sub sane_name($$)
+sub sane_name($$$)
 {
-  my ($name,$opt) = @_;
+  my ($name,$opt,$type) = @_;
 
   if (length($name) < 1)
   {
@@ -404,8 +404,12 @@ sub sane_name($$)
   die qq^Invalid name $name, cannot contain '"'\n^ if ($name =~ m/\"/);
   die "Invalid name $name, cannot contain '/'\n" if ($name =~ m:/: && !$opt);
   die "Invalid name $name, cannot equal '.' or '..'\n" if ($name eq '.' || $name eq '..');
-  die "Invalid name $name, cannot equal name of certificate authority\n" if ($name eq $CA_CN);
-  die "Invalid name $name, already in use\n" if (-d "$ARCHIVE_BASE/$name" && !$OPTIONS{'renew'});
+  if ($type)
+  {
+    die "Invalid name $name, cannot equal name of certificate authority\n" if ($name eq $CA_CN);
+    die "Invalid name $name, already in use\n" if (-d "$ARCHIVE_BASE/$name" && !$OPTIONS{'renew'} && !$OPTIONS{'force'});
+    die "Invalid name $name, already in use\n" if (-e "$ARCHIVE_BASE/$name/$type.crt" && !$OPTIONS{'renew'});
+  }
   die "Invalid name, contains control characters\n" if ($name =~ /[\000-\037]/);
 }
 
@@ -521,14 +525,14 @@ sub validate_names($$)
   for(my $x=0;$x<=$#{$namesref};$x++)
   {
     my ($name) = $namesref->[$x];
-    sane_name($name,$x);
+    sane_name($name,$x,$type);
 
     # A real script would need to deal with IDN homographs or other control character attacks here
   }
 
   my ($dir) = $ARCHIVE_BASE."/".$namesref->[0];
   print STDERR "Checking dir $dir\n" unless ($OPTIONS{'quiet'});
-  if (-d $dir)
+  if (-d $dir && $OPTIONS{'renew'})
   {
     # We already checked that we are in --renew mode
 
@@ -553,7 +557,7 @@ sub validate_altnames(@)
   {
     my ($type,$value) = split(/:/,$saname,2);
     die "Invalid alternative name type $type\n" if ($type !~ /^(email|IP|DNS|URI)$/);
-    sane_name($value,1);
+    sane_name($value,1,undef);
   }
 }
 
@@ -571,7 +575,7 @@ sub validate_constraints(@)
     my ($type,$value) = split(/:/,$other,2);
     die "Invalid contraint decision type $decision\n" if ($decision !~ /^(permitted|excluded)$/);
     die "Invalid contraint name type $type\n" if ($type !~ /^(email|IP|DNS|URI|dirName)$/);
-    sane_name($value,1);
+    sane_name($value,1,undef);
   }
 }
 
@@ -637,7 +641,7 @@ sub gencert($$$$)
 
   # Prepare directory to dump all of this information
   $ARCHIVE_DIR="$ARCHIVE_BASE/$namelist->[0]";
-  die "Existing CN: ".($namelist->[0])."\n" if (-e "$ARCHIVE_DIR");
+  die "Existing CN: ".($namelist->[0])."\n" if (-e "$ARCHIVE_DIR" && !$OPTIONS{'force'});
   mkdir($ARCHIVE_DIR);
 
   # Generate certificate
@@ -698,11 +702,11 @@ sub genca($$$$$$$$$)
   die "Bad certificate information" unless ($CA_CN);
 
   # Check for sane arguments
-  sane_name($C,1);
-  sane_name($ST,1);
-  sane_name($L,1);
-  sane_name($O,1);
-  sane_name($OU,1) if ($OU);
+  sane_name($C,1,undef);
+  sane_name($ST,1,undef);
+  sane_name($L,1,undef);
+  sane_name($O,1,undef);
+  sane_name($OU,1,undef) if ($OU);
   validate_names([$CA_CN,$CA_EM],"ca");
 
   # Set up cert directory
@@ -923,11 +927,11 @@ $ST = $C[1] unless (defined($ST));
 $L = $C[2] unless (defined($L));
 $O = $C[3] unless (defined($O));
 $OU = $C[4] unless (defined($OU));
-sane_name($C,1);
-sane_name($ST,1);
-sane_name($L,1);
-sane_name($O,1);
-sane_name($OU,1) if ($OU);
+sane_name($C,1,undef);
+sane_name($ST,1,undef);
+sane_name($L,1,undef);
+sane_name($O,1,undef);
+sane_name($OU,1,undef) if ($OU);
 ($CA_CN,$CA_EM) = @C[5..$#C];
 die "Bad certificate information in $CA_INFO\n" unless ($CA_CN);
 
