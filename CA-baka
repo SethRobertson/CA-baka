@@ -407,8 +407,8 @@ sub sane_name($$$)
   if ($type)
   {
     die "Invalid name $name, cannot equal name of certificate authority\n" if ($name eq $CA_CN);
-    die "Invalid name $name, already in use\n" if (-d "$ARCHIVE_BASE/$name" && !$OPTIONS{'renew'} && !$OPTIONS{'force'});
-    die "Invalid name $name, already in use\n" if (-e "$ARCHIVE_BASE/$name/$type.crt" && !$OPTIONS{'renew'});
+    die "Invalid name $name, already in use (use --renew to update existing cert)\n" if (-e "$ARCHIVE_BASE/$name/$type.crt" && !$OPTIONS{'renew'});
+    die "Invalid name $name, already in use (use --force to create another cert type for this name)\n" if (-d "$ARCHIVE_BASE/$name" && !$OPTIONS{'renew'} && !$OPTIONS{'force'});
   }
   die "Invalid name, contains control characters\n" if ($name =~ /[\000-\037]/);
 }
@@ -527,7 +527,7 @@ sub validate_names($$)
     my ($name) = $namesref->[$x];
     sane_name($name,$x,$type);
 
-    # A real script would need to deal with IDN homographs or other control character attacks here
+    # XXX - A real script would need to deal with IDN homographs or other control character attacks here
   }
 
   my ($dir) = $ARCHIVE_BASE."/".$namesref->[0];
