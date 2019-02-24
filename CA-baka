@@ -727,7 +727,10 @@ sub genca($$$$$$$$$)
   validate_names([$CA_CN,$CA_EM],"ca");
 
   # Set up cert directory
-  mkdir($CA_DIR) || die "Cannot make working directory $CA_DIR: $!";
+  if (! -d $CA_DIR)
+  {
+    mkdir($CA_DIR) || die "Cannot make working directory $CA_DIR: $!";
+  }
   mkdir($CA_DIR."/tmp") || die "Cannot make tmp working directory: $!";
 
   # Save legacy ARCHIVE_BASE in case this is a subCA case
@@ -891,6 +894,28 @@ if ($OPTIONS{'version'})
 }
 
 
+sub load_defaults()
+{
+  # Set up defaults, if needed
+  open(CA,"<","$CA_INFO") || die "Cannot open certificate information file\n";
+  my (@C) = <CA>;
+  close(CA);
+  chomp(@C);
+  $C = $C[0] unless (defined($C));
+  $ST = $C[1] unless (defined($ST));
+  $L = $C[2] unless (defined($L));
+  $O = $C[3] unless (defined($O));
+  $OU = $C[4] unless (defined($OU));
+  sane_name($C,1);
+  sane_name($ST,1);
+  sane_name($L,1);
+  sane_name($O,1);
+  sane_name($OU,1) if ($OU);
+  ($CA_CN,$CA_EM) = @C[5..$#C];
+  die "Bad certificate information in $CA_INFO\n" unless ($CA_CN);
+}
+
+
 # Older versions of OpenSSL do not support four digit years
 my ($opensslversion) = openssl("version");
 if ($opensslversion =~ /\b0\.9\.[^9]/)
@@ -916,10 +941,15 @@ if (@NameConstraints)
 
 ##################################################
 # Check for initialized working directory
-if (! -f $CA_INFO)
+if (! -f $CA_INFO || (! -f "$CA_CRT" && @CAinfo))
 {
   # Not initialized, check for sanity and set it up (must have --newca)
-  die "Must delete certificate directory\n" if (-e $CA_DIR);
+  if (-e $CA_DIR)
+  {
+    die "Must delete certificate directory\n" if (-e $CA_DIR && -f "$CA_CRT");
+    load_defaults();
+  }
+
   die "Missing --newca certificate information\n" unless (@CAinfo);
   print STDERR "Generating certificate authority certificate\n" unless ($OPTIONS{'quiet'});
   die "Must set x509 subject information (--C --ST --L --O, plus optionally --OU)\n" unless (defined($C) && defined($ST) && defined($L) && defined($O));
@@ -934,23 +964,7 @@ die "Already have CA initialized\n" if (@CAinfo);
 die "Only partially initialized.  Check $CA_DIR\n" unless (-f "$CA_CRT");
 die "Only partially initialized.  Check $CA_DIR\n" unless (-f "$TRUSTED_DIR/index.txt");
 
-# Set up defaults, if needed
-open(CA,"<","$CA_INFO") || die "Cannot open certificate information file\n";
-my (@C) = <CA>;
-close(CA);
-chomp(@C);
-$C = $C[0] unless (defined($C));
-$ST = $C[1] unless (defined($ST));
-$L = $C[2] unless (defined($L));
-$O = $C[3] unless (defined($O));
-$OU = $C[4] unless (defined($OU));
-sane_name($C,1,undef);
-sane_name($ST,1,undef);
-sane_name($L,1,undef);
-sane_name($O,1,undef);
-sane_name($OU,1,undef) if ($OU);
-($CA_CN,$CA_EM) = @C[5..$#C];
-die "Bad certificate information in $CA_INFO\n" unless ($CA_CN);
+load_defaults();
 
 ##################################################
 # Create subsidiary CA signed by this one
