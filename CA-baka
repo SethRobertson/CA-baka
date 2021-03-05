@@ -662,6 +662,7 @@ sub gencert($$$$)
   elsif ($OPTIONS{'pk'} eq "dsa")
   {
     openssl("dsaparam -out '$ARCHIVE_DIR/$dirent.key' -genkey '$OPTIONS{'keylen'}'");
+    print "WARNING: dsa certificates do not appear to be fully working.  req -x509 works while req->ca does not\n";
   }
   else
   {
