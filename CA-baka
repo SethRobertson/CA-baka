@@ -731,7 +731,7 @@ sub genca($$$$$$$$$)
   {
     mkdir($CA_DIR) || die "Cannot make working directory $CA_DIR: $!";
   }
-  mkdir($CA_DIR."/tmp") || die "Cannot make tmp working directory: $!";
+  mkdir($CA_DIR."/tmp",0700) || die "Cannot make tmp working directory: $!";
 
   # Save legacy ARCHIVE_BASE in case this is a subCA case
   my ($REAL_ARCHIVE_DIR) = "$ARCHIVE_BASE/$CA_CN";
