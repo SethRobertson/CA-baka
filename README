@@ -221,11 +221,10 @@ OPTIONS
         Distribution of said CRL is left as an exercise to the reader.
 
     --days *number*
-        Override the default number of days a certificate will be valid for.
-        By default, normal certificates are valid for 365 days (1 year) and
-        CA and CRL certificates are valid for 1825 days (5 years). Note that
-        the start date of the certificate will be yesterday, to allow for
-        poorly set clocks.
+        Override the default number of days a certificate will be valid for,
+        relative to today. By default, normal certificates are valid for 365
+        days (1 year) and CA and CRL certificates are valid for 1825 days (5
+        years).
 
         Note that issued certificates cannot by default have an expiration
         date greater than the certifying authority's certificate expiration
@@ -234,6 +233,11 @@ OPTIONS
         longer validate). The corollary is that Certificate Authority
         Certificates should probably have a fairly long lifetime. The
         corollary's corollary is that your should protect your CA key well.
+
+    --start *timestamp*
+        Override the default certificate validity start date (24 hours ago
+        from "now"). A suitable way to specify a desired start timestamp is
+        using a command like: `date -d 'May 15 last year' +%Y%m%d%H%M%SZ`
 
     --md *hash algorthms*
         Override the default hash algorithm for a certificate. The default

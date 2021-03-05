@@ -54,6 +54,9 @@ my($USAGE) = "Usage: $0:
  ### Default 365 days normally but 1825 days for CA and CRL certs ###
  [--days number]
 
+ ### Default, certificate start date one day ago
+ [--start %Y%m%d%H%M%SZ]
+
  ## Certificate key length.  Default 2048 bits ##
  [--keylen bitlen|curvename]
 
@@ -111,7 +114,7 @@ $DefOpt{'md'} = "sha512";
 $DefOpt{'pk'} = "rsa";
 
 Getopt::Long::Configure("no_ignore_case", "no_auto_abbrev", "no_getopt_compat", "require_order");
-GetOptions(\%OPTIONS, 'workdir=s', 'C|country=s', 'ST|state=s', 'L|locality=s', 'O|organization=s', 'OU|organizationalunit=s', 'revoke=s', 'verify=s', 'newserver=s{1,2}'=>\@NewServer, 'altnames=s'=>\@AltNames, 'constraints=s'=>\@NameConstraints, 'newclient=s{1,2}'=>\@NewClient, 'newmail=s{1,2}'=>\@NewMail, 'newcoder=s{1,2}'=>\@NewCoder, 'newca=s{2}'=>\@CAinfo, 'subca=s{3}'=>\@SubCA, 'renew', 'days=f', 'keylen=s', 'md=s', 'pk=s', 'force', 'version', 'verbose|v+', 'quiet') || die $USAGE;
+GetOptions(\%OPTIONS, 'workdir=s', 'C|country=s', 'ST|state=s', 'L|locality=s', 'O|organization=s', 'OU|organizationalunit=s', 'revoke=s', 'verify=s', 'newserver=s{1,2}'=>\@NewServer, 'altnames=s'=>\@AltNames, 'constraints=s'=>\@NameConstraints, 'newclient=s{1,2}'=>\@NewClient, 'newmail=s{1,2}'=>\@NewMail, 'newcoder=s{1,2}'=>\@NewCoder, 'newca=s{2}'=>\@CAinfo, 'subca=s{3}'=>\@SubCA, 'renew', 'days=f', 'start=s', 'keylen=s', 'md=s', 'pk=s', 'force', 'version', 'verbose|v+', 'quiet') || die $USAGE;
 
 ##################################################
 # Look for parse errors (easy with optional arguments)
@@ -149,7 +152,7 @@ my ($CA_INFO) = "$CA_DIR/.cainfo";
 my ($TMPCONF) = "$CA_DIR/tmp/ssl.conf";
 my ($TMP_SERIAL) = "$CA_DIR/tmp/tmp-serial";
 
-my ($StartDate) = strftime("%Y%m%d%H%M%SZ", gmtime(time - 86400));
+my ($StartDate) = $OPTIONS{'start'} || strftime("%Y%m%d%H%M%SZ", gmtime(time - 86400));
 
 
 
@@ -1311,11 +1314,10 @@ Distribution of said CRL is left as an exercise to the reader.
 
 =item B<--days I<number>>
 
-Override the default number of days a certificate will be valid for.
-By default, normal certificates are valid for 365 days (1 year) and CA
-and CRL certificates are valid for 1825 days (5 years).  Note that the
-start date of the certificate will be yesterday, to allow for poorly
-set clocks.
+Override the default number of days a certificate will be valid for,
+relative to today.  By default, normal certificates are valid for 365
+days (1 year) and CA and CRL certificates are valid for 1825 days (5
+years).
 
 Note that issued certificates cannot by default have an expiration
 date greater than the certifying authority's certificate expiration
@@ -1324,6 +1326,12 @@ to do so, since after that date the issued certificate will no longer
 validate).  The corollary is that Certificate Authority Certificates
 should probably have a fairly long lifetime.  The corollary's corollary
 is that your should protect your CA key well.
+
+=item B<--start I<timestamp>>
+
+Override the default certificate validity start date (24 hours ago
+from "now").  A suitable way to specify a desired start timestamp is
+using a command like: `date -d 'May 15 last year' +%Y%m%d%H%M%SZ`
 
 =item B<--md I<hash algorthms>>
 

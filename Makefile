@@ -29,11 +29,11 @@ $(MAN): $(PROG)
 clean:
 	rm -rf *~ $(MAN) test-workdir
 
-.PHONY: test test1 test2 default install clean
+.PHONY: test test1 test2 test3 test4 test5 test6 test7 test8 test9 testN default install clean
 
 
 
-test: test1 test2 test3 test4 test5 test6 test7 testN
+test: test1 test2 test3 test4 test5 test6 test7 test8 testN
 
 test1:
 	rm -rf test-workdir
@@ -128,6 +128,19 @@ test7:
 	@echo The following test should fail as out-of-permitted-subtree
 	./CA-baka --quiet --workdir test-workdir --verify test-workdir/archive/badserver.example.org/server.crt && exit 1 || echo 0
 	rm -rf test-workdir
+
+test8:
+	rm -rf test-workdir
+	@echo The following test should fail with certificate not yet valid
+	./CA-baka --quiet --start `date -d 'tomorrow'  +%Y%m%d%H%M%SZ` --workdir test-workdir -C US --ST NY -L "New York" -O "Mythical NY Company" --newca ca.example.com ""
+	./CA-baka --quiet --workdir test-workdir --altnames DNS:server.example.com --newserver server.example.com
+	openssl verify -CAfile test-workdir/ca.crt  -CRLfile  test-workdir/ca.crl test-workdir/archive/server.example.com/server.crt && echo 1 || echo 0
+	rm -rf test-workdir
+	./CA-baka --quiet --start 19700303233134Z --workdir test-workdir -C US --ST NY -L "New York" -O "Mythical NY Company" --newca ca.example.com ""
+	./CA-baka --quiet --workdir test-workdir --altnames DNS:server.example.com --newserver server.example.com
+	openssl verify -CAfile test-workdir/ca.crt  -CRLfile  test-workdir/ca.crl test-workdir/archive/server.example.com/server.crt
+	rm -rf test-workdir
+
 
 # If you add more tests, add them to the test: line above
 testN:
