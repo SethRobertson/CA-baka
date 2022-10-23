@@ -858,7 +858,7 @@ sub cryptocheck()
 	last;
       }
     }
-    die "Inappropriate key length/curve $OPTIONS{'keylen'}\n$USAGE" unless check_curve($OPTIONS{'keylen'});
+    die "Inappropriate key length/(really curvename) $OPTIONS{'keylen'}. Values\n@{[`openssl ecparam -list_curves`]}\n$USAGE" unless check_curve($OPTIONS{'keylen'});
   }
   else
   {
