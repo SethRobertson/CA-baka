@@ -4,15 +4,17 @@ NAME
     The sysadmin's and network security developer's best friend.
 
 SYNOPSIS
-    CA-baka [--workdir directory] [--country|--C country] [--state|--ST
-    state] [--locality|--L city] [--organization|--O company]
-    [--organizationalunit|--OU department] [--days number] [--keylen bitlen]
-    [--md sha256|sha224|sha384|sha512|sha1] [--pk rsa|ecc|dsa] [--newca CN
-    Email] [--subca CN Email NewWorkDir] [--newserver CN [Email]]
-    [--newclient CN [Email]] [--newmail CN [Email]] [--newcoder CN [Email]]
-    [--altnames TYPE:value]... [--constraints METHOD;TYPE:value]...
-    [--revoke CN] [--renew] [--verify filename] [--force] [--verbose]+ [-v]+
-    [--quiet]
+    CA-baka  [--workdir directory]
+     [--country|--C country] [--state|--ST state] [--locality|--L city]
+     [--organization|--O company] [--organizationalunit|--OU department]
+     [--days number]  [--keylen bitlen]
+     [--md sha256|sha224|sha384|sha512|sha1]  [--pk rsa|ecc|dsa]
+     [--newca CN Email]  [--subca CN Email NewWorkDir]
+     [--newserver CN [Email]]  [--newclient CN [Email]]
+     [--newmail CN [Email]]  [--newcoder CN [Email]]
+     [--altnames TYPE:value]...  [--constraints METHOD;TYPE:value]...
+     [--revoke CN]  [--renew]  [--verify filename]  [--force]
+     [--verbose]+ [-v]+ [--quiet]
 
 DESCRIPTION
     This Certificate Authority is designed for use by a skilled, trusted
@@ -223,8 +225,7 @@ OPTIONS
     --days *number*
         Override the default number of days a certificate will be valid for,
         relative to today. By default, normal certificates are valid for 365
-        days (1 year) and CA and CRL certificates are valid for 1825 days (5
-        years).
+        days (1 year) and CA certificates are valid for 1825 days (5 years).
 
         Note that issued certificates cannot by default have an expiration
         date greater than the certifying authority's certificate expiration
@@ -233,6 +234,16 @@ OPTIONS
         longer validate). The corollary is that Certificate Authority
         Certificates should probably have a fairly long lifetime. The
         corollary's corollary is that your should protect your CA key well.
+
+    --crldays *number*
+        Override the default number of days the Certificate Revocation List
+        (CRL) will be valid for, relative to today. By default, CRL
+        Certificates are valid for 1825 days (5 years).
+
+        Unless you have an automated process to renew and manage the CRL
+        (unlikely if you are using this program!!), you likely will want the
+        CRL valid for as long as the CA is valid; since correct applications
+        will stop validating certificates if the CRL has expired.
 
     --start *timestamp*
         Override the default certificate validity start date (24 hours ago
