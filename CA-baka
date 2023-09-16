@@ -29,8 +29,9 @@ use open	qw< :std :utf8 >;
 #use charnames	qw< :full >;
 #use feature	qw< unicode_strings >;
 
-#use Encode		qw< encode decode >;
-#use Unicode::Normalize	qw< NFD NFC >;
+# use Encode		qw< encode decode >;
+use Encode::Locale qw(decode_argv);
+use Unicode::Normalize	qw< NFD NFC >;
 use Carp		qw< carp croak confess cluck >;
 use File::Basename	qw< basename >;
 use Getopt::Long;
@@ -39,6 +40,8 @@ use File::Spec;
 use POSIX qw(strftime);
 use File::Copy;
 use Time::Local;
+
+Encode::Locale::decode_argv();
 
 $0 = basename($0);		# Shorter messages
 
@@ -217,6 +220,7 @@ default_bits		= 2048
 distinguished_name	= req_distinguished_name
 prompt			= no
 x509_extensions		= $extensions
+utf8 = yes
 
 [ req_distinguished_name ]
 EOF
