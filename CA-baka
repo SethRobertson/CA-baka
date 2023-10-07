@@ -253,17 +253,15 @@ $san_line$nc_line
 basicConstraints	= critical, CA:FALSE
 subjectKeyIdentifier	= hash
 authorityKeyIdentifier	= keyid:always,issuer:always
-nsCertType		= server
-extendedKeyUsage	= serverAuth
-keyUsage		= critical, digitalSignature, keyEncipherment
+extendedKeyUsage	= critical, serverAuth
+keyUsage		= critical, digitalSignature, keyEncipherment, keyAgreement, nonRepudiation
 $san_line
 
 [ client ]
 basicConstraints	= critical, CA:FALSE
 subjectKeyIdentifier	= hash
 authorityKeyIdentifier	= keyid:always,issuer:always
-keyUsage		= digitalSignature, keyEncipherment
-nsCertType		= client
+keyUsage		= critical, digitalSignature, keyEncipherment, nonRepudiation
 extendedKeyUsage	= critical, clientAuth
 $san_line
 
@@ -271,8 +269,7 @@ $san_line
 basicConstraints	= critical, CA:FALSE
 subjectKeyIdentifier	= hash
 authorityKeyIdentifier	= keyid:always,issuer:always
-keyUsage		= critical, digitalSignature, keyEncipherment
-nsCertType		= email
+keyUsage		= critical, digitalSignature, keyEncipherment, dataEncipherment, nonRepudiation, keyAgreement
 extendedKeyUsage	= emailProtection
 $san_line
 
@@ -281,8 +278,7 @@ basicConstraints	= critical, CA:FALSE
 subjectKeyIdentifier	= hash
 authorityKeyIdentifier	= keyid:always,issuer:always
 keyUsage		= critical, digitalSignature
-nsCertType		= objsign
-extendedKeyUsage	= codeSigning
+extendedKeyUsage	= critical, codeSigning
 $san_line
 
 [ crl_ext ]
