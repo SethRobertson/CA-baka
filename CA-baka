@@ -464,6 +464,11 @@ sub findtypes($)
     $type="mail";
     $extension="mail_cert";
   }
+  if (-f "$dir/coder.crt")
+  {
+    $type="coder";
+    $extension="coder_cert";
+  }
   my ($fn) = "$dir/$type.crt";
 
   if (wantarray)
