@@ -502,7 +502,7 @@ sub revoke($$)
   genserial();
   gensslconf($extension,$cn,undef,undef,undef,$CA_DIR);
 
-  die "Cannot find certificate to revoke in standard archive location\n" if (!-f "$dir/$type.crt");
+  die "Cannot find certificate to revoke in standard archive location ($dir/$type.crt)\n" if (!-f "$dir/$type.crt");
 
   openssl("ca -batch -revoke '$dir/$type.crt' -config '$TMPCONF'");
   openssl("ca -batch -gencrl -out '$CA_CRL' -config '$TMPCONF'");
