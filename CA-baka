@@ -931,7 +931,7 @@ sub load_defaults()
   ($CA_CN,$CA_EM) = @C[5..6];
   $OPTIONS{'md'} = $C[7] || $DefOpt{'md'} unless (defined($OPTIONS{'md'}));
   $OPTIONS{'pk'} = $C[8] || $DefOpt{'pk'} unless (defined($OPTIONS{'pk'}));
-  $OPTIONS{'keylen'} = int($C[9]) || $DefOpt{'keylen'} unless (defined($OPTIONS{'keylen'}));
+  $OPTIONS{'keylen'} = $C[9] || $DefOpt{'keylen'} unless (defined($OPTIONS{'keylen'}));
   cryptocheck();
   die "Bad certificate information in $CA_INFO\n" unless ($CA_CN);
 }
