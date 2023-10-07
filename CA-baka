@@ -989,8 +989,8 @@ if (! -f $CA_INFO || (! -f "$CA_CRT" && @CAinfo))
 
 # Check for attempts to recreate CA after initialization
 die "Already have CA initialized\n" if (@CAinfo);
-die "Only partially initialized.  Check $CA_DIR\n" unless (-f "$CA_CRT");
-die "Only partially initialized.  Check $CA_DIR\n" unless (-f "$TRUSTED_DIR/index.txt");
+die "Only partially initialized.  Check for missing $CA_CRT\n" unless (-f "$CA_CRT");
+die "Only partially initialized.  Check for missing $TRUSTED_DIR/index.txt\n" unless (-f "$TRUSTED_DIR/index.txt");
 
 load_defaults();
 
