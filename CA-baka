@@ -1019,6 +1019,10 @@ if (@NewClient)
 # Create user/mail certificate
 if (@NewMail)
 {
+  if ($OPTIONS{'pk'} ne "rsa")
+  {
+    print "WARNING: email certificates currently require RSA signatures for encryption, apparently.  Pressing on dangerously.\n";
+  }
   gencert(\@NewMail,"mail_cert","mail","Mail");
 }
 
