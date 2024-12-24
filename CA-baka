@@ -235,6 +235,10 @@ print W qq^emailAddress		= "$email"\n^ if ($email);
 print W <<EOF;
 CN			= "$cn"
 
+[ csr ]
+subjectKeyIdentifier	= hash
+$san_line$nc_line
+
 [ v3_ca ]
 subjectKeyIdentifier	= hash
 authorityKeyIdentifier	= keyid:always,issuer:always
@@ -682,7 +686,7 @@ sub gencert($$$$)
     die "Unimplemented algorithm";
   }
   umask($mask);
-  openssl("req -batch -config '$TMPCONF' -new -key '$ARCHIVE_DIR/$dirent.key' -out '$CA_DIR/tmp/$dirent.csr' -extensions $extensions");
+  openssl("req -batch -config '$TMPCONF' -new -key '$ARCHIVE_DIR/$dirent.key' -out '$CA_DIR/tmp/$dirent.csr' -extensions csr");
 
   my ($other) = "";
   if ($extensions eq "v3_ca" && ! -f $CA_CRT)
